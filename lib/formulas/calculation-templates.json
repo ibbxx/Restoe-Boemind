@@ -1,0 +1,191 @@
+{
+  "$comment": "Calculation Templates — represent the REAL Excel calculation blocks found in Phase 1. Each template binds formula_id + input fields + dependency + output. Variants are kept separate; nothing is forced into one universal formula.",
+  "version": "1.0.0",
+  "templates": [
+    {
+      "template_id": "T_A_AHS_STANDARD",
+      "template_name": "AHS Standard (Template A)",
+      "source_sheet": "JATENG",
+      "source_block": "C8:M37 — 'ANALISIS HARGA SATUAN (AHS)' + 'EVALUASI HARGA VENDOR'",
+      "version": 1,
+      "active": true,
+      "coverage_note": "Template dominan: 454 dari 485 blok AHS pada 33 sheet.",
+      "input_definition": [
+        { "key": "volume", "label": "Volume (liter)", "data_type": "number", "required": true },
+        { "key": "harga_jual_include", "label": "Harga Jual (include pajak)", "data_type": "number", "required": true },
+        { "key": "include_divisor", "label": "Divisor pajak harga jual", "data_type": "number", "required": true, "default": 1.11 },
+        { "key": "cost_lines", "label": "Cost items (rate, qty)", "data_type": "array", "required": true }
+      ],
+      "formula_definition": {
+        "harga_jual_dpp": "F005",
+        "revenue": "F006",
+        "cost_line_total": "F007",
+        "ppn_input": "F008B",
+        "total_cost": "F015A",
+        "cost_per_liter": "F016",
+        "gross_profit": "F017",
+        "ppn_difference": "F018",
+        "net_profit": "F019A",
+        "net_profit_per_liter": "F020",
+        "profit_percentage": "F021A"
+      },
+      "dependency_definition": {
+        "harga_jual_dpp": ["harga_jual_include", "include_divisor"],
+        "revenue": ["harga_jual_setelah_pajak", "volume"],
+        "cost_line_total": ["rate", "qty"],
+        "total_cost": ["cost_totals"],
+        "cost_per_liter": ["cost_rates"],
+        "gross_profit": ["revenue", "total_cost"],
+        "ppn_difference": ["ppn_output", "ppn_input"],
+        "net_profit": ["gross_profit", "ppn_difference"],
+        "net_profit_per_liter": ["net_profit", "volume"],
+        "profit_percentage": ["net_profit", "total_cost"]
+      },
+      "output_definition": [
+        "harga_jual_dpp", "harga_jual_setelah_pajak", "revenue", "total_cost",
+        "cost_per_liter", "ppn_output", "ppn_input", "ppn_difference",
+        "gross_profit", "net_profit", "net_profit_per_liter", "profit_percentage"
+      ]
+    },
+    {
+      "template_id": "T_B_VENDOR_EVAL_PROFAMIR",
+      "template_name": "Vendor Evaluation / Versi Prof Amir (Template B)",
+      "source_sheet": "Eval Vendor TL",
+      "source_block": "G4:Q39 — 6 blok dalam satu sheet",
+      "version": 1,
+      "active": true,
+      "coverage_note": "Semua contoh Excel di PRD §14–§26 berasal dari template ini.",
+      "input_definition": [
+        { "key": "volume", "label": "Volume (liter)", "data_type": "number", "required": true },
+        { "key": "harga_jual_include", "label": "Harga Jual (include pajak)", "data_type": "number", "required": true },
+        { "key": "include_divisor", "label": "Divisor pajak harga jual", "data_type": "number", "required": true, "default": 1.11 },
+        { "key": "base_price", "label": "Harga dasar vendor", "data_type": "number", "required": true },
+        { "key": "cost_lines", "label": "Cost items (rate, qty)", "data_type": "array", "required": true }
+      ],
+      "formula_definition": {
+        "vendor_ppn": "F001",
+        "vendor_all_in": "F002B",
+        "harga_jual_dpp": "F005",
+        "revenue": "F006",
+        "cost_line_total": "F007",
+        "ppn_input": "F008A",
+        "total_cost": "F015A",
+        "cost_per_liter": "F016",
+        "gross_profit": "F017",
+        "ppn_difference": "F018",
+        "net_profit": "F019A",
+        "net_profit_per_liter": "F020",
+        "profit_percentage": "F021A"
+      },
+      "dependency_definition": {
+        "vendor_ppn": ["base_price", "ppn_rate"],
+        "vendor_all_in": ["base_price", "ppn", "pbbkb", "pph", "oat", "ppn_oat", "bph"],
+        "ppn_input": ["base_price", "ppn_rate"],
+        "revenue": ["harga_jual_setelah_pajak", "volume"],
+        "profit_percentage": ["net_profit", "total_cost"]
+      },
+      "output_definition": [
+        "vendor_ppn", "vendor_all_in", "harga_jual_dpp", "revenue", "total_cost",
+        "cost_per_liter", "ppn_output", "ppn_input", "ppn_difference",
+        "gross_profit", "net_profit", "net_profit_per_liter", "profit_percentage"
+      ]
+    },
+    {
+      "template_id": "T_C_PROYEKSI_LABA_RUGI",
+      "template_name": "Proyeksi Laba Rugi (Template C)",
+      "source_sheet": "IWIP ",
+      "source_block": "G3:Z42 — PROYEKSI LABA RUGI (PT IWIP)",
+      "version": 1,
+      "active": true,
+      "coverage_note": "Total Biaya memakai baris biaya terpilih (F015B), bukan penjumlahan seluruh range.",
+      "input_definition": [
+        { "key": "volume", "label": "Volume (liter)", "data_type": "number", "required": true },
+        { "key": "harga_jual_include", "label": "Harga Jual (include pajak)", "data_type": "number", "required": true },
+        { "key": "include_divisor", "label": "Divisor pajak harga jual", "data_type": "number", "required": true, "default": 1.11 },
+        { "key": "cost_lines", "label": "Cost items (rate, qty)", "data_type": "array", "required": true }
+      ],
+      "formula_definition": {
+        "harga_jual_dpp": "F005",
+        "revenue": "F006",
+        "cost_line_total": "F007",
+        "total_cost": "F015B",
+        "cost_per_liter": "F016",
+        "gross_profit": "F017",
+        "ppn_difference": "F018",
+        "net_profit": "F019A",
+        "net_profit_per_liter": "F020",
+        "profit_percentage": "F021A"
+      },
+      "dependency_definition": {
+        "total_cost": ["hpp", "oat", "pbbkb", "ppn_input", "biaya_proyek", "biaya_keagenan"],
+        "profit_percentage": ["net_profit", "total_cost"]
+      },
+      "output_definition": [
+        "revenue", "total_cost", "cost_per_liter", "ppn_difference",
+        "gross_profit", "net_profit", "net_profit_per_liter", "profit_percentage"
+      ]
+    },
+    {
+      "template_id": "T_E_AHS_PROFIT_SHARE",
+      "template_name": "AHS Profit-Share (Template E)",
+      "source_sheet": "TONASA",
+      "source_block": "CJ49:CO88 — 'ANALISIS HARGA SATUAN (AHS)' dengan baris PROFIT ... PATNER",
+      "version": 1,
+      "active": true,
+      "coverage_note": "Varian NYATA dari Template A: 133 blok AHS mengganti baris PERSENTASE dengan baris 'PROFIT n% PATNER PERLITER / (RP)' dan 'PROFIT n% RBI PERLITER'. Label agregatnya memakai akhiran '(RP)': 'LABA KOTOR (RP)', 'LABA BERSIH (RP)'. Pelajaran Phase 2.5: extractor lama mencocokkan label secara persis sehingga 89+ blok ini terlempar tanpa alasan. profit_percentage tidak dihitung pada template ini.",
+      "input_definition": [
+        { "key": "volume", "label": "Volume (liter)", "data_type": "number", "required": true },
+        { "key": "harga_jual_include", "label": "Harga Jual (include pajak)", "data_type": "number", "required": false },
+        { "key": "harga_jual_dpp_input", "label": "Harga Jual DPP (jika literal di Excel)", "data_type": "number", "required": false },
+        { "key": "include_divisor", "label": "Divisor pajak harga jual", "data_type": "number", "required": false },
+        { "key": "cost_lines", "label": "Cost items (rate, qty)", "data_type": "array", "required": true }
+      ],
+      "formula_definition": {
+        "harga_jual_dpp": "F005",
+        "revenue": "F006",
+        "cost_line_total": "F007",
+        "ppn_input": "F008B",
+        "total_cost": "F015A",
+        "cost_per_liter": "F016",
+        "gross_profit": "F017",
+        "ppn_difference": "F018",
+        "net_profit": "F019A",
+        "net_profit_per_liter": "F020"
+      },
+      "dependency_definition": {
+        "harga_jual_dpp": ["harga_jual_include", "include_divisor", "harga_jual_dpp_input"],
+        "revenue": ["harga_jual_setelah_pajak", "volume"],
+        "net_profit": ["gross_profit", "ppn_difference"],
+        "net_profit_per_liter": ["net_profit", "volume"]
+      },
+      "output_definition": [
+        "harga_jual_dpp", "harga_jual_setelah_pajak", "revenue", "total_cost",
+        "cost_per_liter", "ppn_output", "ppn_input", "ppn_difference",
+        "gross_profit", "net_profit", "net_profit_per_liter"
+      ]
+    },
+    {
+      "template_id": "T_D_MARKET_CASH",
+      "template_name": "Perhitungan Harga Cash / Market (Template D)",
+      "source_sheet": "AHAS Coretan",
+      "source_block": "O12:V27 dan Market Bu Ve",
+      "version": 1,
+      "active": true,
+      "coverage_note": "Blok 'fee + profit' per liter; memakai hasil blok AHS terkait (profit RBI, selisih PPN).",
+      "input_definition": [
+        { "key": "harga_sumber", "label": "Harga sumber", "data_type": "number", "required": true },
+        { "key": "fee_items", "label": "Fee items (fee esbi, fee bu ve, ...)", "data_type": "array", "required": true },
+        { "key": "profit_rbi", "label": "Profit RBI / liter", "data_type": "number", "required": true },
+        { "key": "selisih_ppn_per_liter", "label": "Selisih PPN per liter", "data_type": "number", "required": true }
+      ],
+      "formula_definition": {
+        "cost_line_total": "F007"
+      },
+      "dependency_definition": {
+        "cost_line_total": ["rate", "qty"]
+      },
+      "output_definition": ["harga_jual_dpp", "persen"],
+      "status_note": "Struktur belum sepenuhnya dipetakan menjadi formula tunggal; komponen di luar F007 masih memakai rujukan antar-blok."
+    }
+  ]
+}

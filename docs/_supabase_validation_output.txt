@@ -1,0 +1,90 @@
+              set_config              
+--------------------------------------
+ 00000000-0000-0000-0000-000000000a01
+(1 row)
+
+              set_config              
+--------------------------------------
+ 00000000-0000-0000-0000-000000000a02
+(1 row)
+
+              set_config              
+--------------------------------------
+ 00000000-0000-0000-0000-000000000a03
+(1 row)
+
+              set_config              
+--------------------------------------
+ 00000000-0000-0000-0000-000000000a04
+(1 row)
+
+
+================ RLS / PROTECTION ROLE MATRIX ================
+    role     |          operation          | expected |     actual      | verdict |                                                      note                                                      
+-------------+-----------------------------+----------+-----------------+---------+----------------------------------------------------------------------------------------------------------------
+ ADMIN       | SELECT projects (semua)     | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | INSERT project              | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | UPDATE project              | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | DELETE project              | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | INSERT vendor               | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | INSERT formula_registry     | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | DELETE formula_registry     | ALLOWED  | ALLOWED         | PASS    | 
+ ADMIN       | INSERT project_history      | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | SELECT projects (semua)     | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT project              | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT vendor_prices        | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT price_scenarios      | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT ahs                  | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT formula_registry     | DENIED   | DENIED          | PASS    | [42501: new row violates row-level security policy for table "formula_registry"] 
+ PROCUREMENT | DELETE project              | DENIED   | DENIED (0 rows) | PASS    | 
+ PROCUREMENT | UPDATE ahs calculated col   | DENIED   | DENIED          | PASS    | [23514: Kolom "revenue" adalah calculated field dan tidak boleh diubah manual. Gunakan calculation engine atau
+ PROCUREMENT | UPDATE ahs NON-calc col     | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | UPDATE ahs AS ENGINE        | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | ENGINE value persisted      | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT scenario_inputs      | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | INSERT child scenario V2    | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | PARENT auto-locked (V1)     | ALLOWED  | ALLOWED         | PASS    | 
+ PROCUREMENT | UPDATE locked scenario      | DENIED   | DENIED          | PASS    | [23514: Scenario 33658053-70cf-4eef-9a21-118c28e8a0fc sudah dikunci (immutable). Buat scenario baru untuk peru
+ PROCUREMENT | INSERT input ke locked V1   | DENIED   | DENIED          | PASS    | [23514: Scenario 33658053-70cf-4eef-9a21-118c28e8a0fc terkunci: input/hasil tidak boleh diubah lagi.] 
+ PROCUREMENT | DELETE scenario             | DENIED   | DENIED (0 rows) | PASS    | 
+ PIC         | SELECT project sendiri      | ALLOWED  | ALLOWED         | PASS    | 
+ PIC         | SELECT project LAIN         | DENIED   | DENIED (0 rows) | PASS    | 
+ PIC         | INSERT project              | DENIED   | DENIED          | PASS    | [42501: new row violates row-level security policy for table "projects"] 
+ PIC         | UPDATE project sendiri      | ALLOWED  | ALLOWED         | PASS    | 
+ PIC         | UPDATE project LAIN         | DENIED   | DENIED (0 rows) | PASS    | 
+ PIC         | INSERT vendor_prices LAIN   | DENIED   | DENIED          | PASS    | [42501: new row violates row-level security policy for table "vendor_prices"] 
+ PIC         | DELETE project              | DENIED   | DENIED (0 rows) | PASS    | 
+ VIEWER      | SELECT master (vendors)     | ALLOWED  | ALLOWED         | PASS    | 
+ VIEWER      | SELECT project orang lain   | DENIED   | DENIED (0 rows) | PASS    | 
+ VIEWER      | INSERT project              | DENIED   | DENIED          | PASS    | [42501: new row violates row-level security policy for table "projects"] 
+ VIEWER      | INSERT vendor               | DENIED   | DENIED          | PASS    | [42501: new row violates row-level security policy for table "vendors"] 
+ VIEWER      | UPDATE vendor               | DENIED   | DENIED (0 rows) | PASS    | 
+ VIEWER      | DELETE vendor               | DENIED   | DENIED (0 rows) | PASS    | 
+ VIEWER      | INSERT formula_registry     | DENIED   | DENIED          | PASS    | [42501: new row violates row-level security policy for table "formula_registry"] 
+ TRIGGER     | UPDATE project_history      | DENIED   | DENIED          | PASS    | [23514: project_history bersifat append-only dan tidak bisa diubah.] 
+ TRIGGER     | DELETE project_history      | DENIED   | DENIED          | PASS    | [23514: project_history tidak bisa dihapus (audit trail).] 
+ TRIGGER     | UPDATE ahs calculated col   | DENIED   | DENIED          | PASS    | [23514: Kolom "revenue" adalah calculated field dan tidak boleh diubah manual. Gunakan calculation engine atau
+ TRIGGER     | UPDATE locked scenario      | DENIED   | DENIED          | PASS    | [23514: Scenario 33658053-70cf-4eef-9a21-118c28e8a0fc sudah dikunci (immutable). Buat scenario baru untuk peru
+ TRIGGER     | INSERT input ke locked V1   | DENIED   | DENIED          | PASS    | [23514: Scenario 33658053-70cf-4eef-9a21-118c28e8a0fc terkunci: input/hasil tidak boleh diubah lagi.] 
+ SCHEMA      | UNRESOLVED formula aktif    | DENIED   | DENIED          | PASS    | [23514: new row for relation "formula_registry" violates check constraint "formula_unresolved_must_be_inactive
+ SCHEMA      | UNRESOLVED formula NONAKTIF | ALLOWED  | ALLOWED         | PASS    | 
+ SCHEMA      | duplikat (project,name)     | DENIED   | DENIED          | PASS    | [23505: duplicate key value violates unique constraint "price_scenarios_project_id_name_key"] 
+(47 rows)
+
+
+================ SUMMARY ================
+    role     | pass | fail 
+-------------+------+------
+ ADMIN       |    8 |    0
+ PIC         |    7 |    0
+ PROCUREMENT |   17 |    0
+ SCHEMA      |    3 |    0
+ TRIGGER     |    5 |    0
+ VIEWER      |    7 |    0
+(6 rows)
+
+ total_failures 
+----------------
+              0
+(1 row)
+

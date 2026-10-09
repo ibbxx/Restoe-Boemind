@@ -1,0 +1,45 @@
+{
+  "name": "analisis-harga-satuan",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Digitalisasi ANALISIS HARGA SATUAN (2026).xlsx — Phase 3: application UI + user workflow on top of the validated calculation engine",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/next-safe.mjs dev",
+    "dev:unsafe": "next dev",
+    "build": "node scripts/next-safe.mjs build",
+    "start": "node scripts/next-safe.mjs start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "extract:excel": "python3 scripts/extract_excel_cases.py",
+    "seed:sql": "node scripts/generate_seed_sql.mjs",
+    "seed:local": "vite-node scripts/seed_local_dummy.ts",
+    "crosscheck:report": "vite-node scripts/crosscheck_report.ts",
+    "coverage:report": "vite-node scripts/coverage_report.ts",
+    "validate:supabase": "bash scripts/validate_supabase.sh"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "react-grab": "^0.2.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.47.10",
+    "next": "^15.5.27",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^4.6.5",
+    "zod-form-data": "^3.0.3"
+  }
+}

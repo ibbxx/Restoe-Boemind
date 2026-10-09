@@ -1,0 +1,8 @@
+.next/
+.next-safe.lock
+node_modules/
+.data/local-store.json
+.env
+.env.local
+.DS_Store
+*.tsbuildinfo
