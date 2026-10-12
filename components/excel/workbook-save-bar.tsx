@@ -12,19 +12,23 @@ export function WorkbookSaveBar({
   message,
   canWrite,
   mapping,
+  isFullscreen = false,
   onRetry,
   onDownloadDraft,
   onLoadLatest,
   onToggleMapping,
+  onToggleFullscreen,
 }: {
   state: SaveState;
   message?: string;
   canWrite: boolean;
   mapping: boolean;
+  isFullscreen?: boolean;
   onRetry: () => void;
   onDownloadDraft: () => void;
   onLoadLatest: () => void;
   onToggleMapping: () => void;
+  onToggleFullscreen?: () => void;
 }) {
   return <div className="univer-save-bar">
     <div className={`univer-save-state is-${state}`} role="status" aria-live="polite">
@@ -38,6 +42,17 @@ export function WorkbookSaveBar({
         <button type="button" className="btn-secondary" onClick={onLoadLatest}>Muat versi terbaru</button>
       </> : null}
       {canWrite ? <button type="button" className="btn-secondary" aria-expanded={mapping} onClick={onToggleMapping}>Hubungkan isian</button> : null}
+      {onToggleFullscreen ? (
+        <button
+          type="button"
+          className="btn-secondary"
+          aria-label={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}
+          title={isFullscreen ? "Keluar layar penuh (Esc)" : "Layar penuh"}
+          onClick={onToggleFullscreen}
+        >
+          {isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+        </button>
+      ) : null}
     </div>
   </div>;
 }

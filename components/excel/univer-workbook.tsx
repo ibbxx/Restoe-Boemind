@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { IWorkbookData } from "@univerjs/core";
 import { LocaleType, mergeLocales } from "@univerjs/core";
 import { createUniver } from "@univerjs/presets";
@@ -8,6 +8,9 @@ import { SetDefinedNameCommand } from "@univerjs/sheets";
 import { UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
 import Indonesian from "@univerjs/preset-sheets-core/locales/id-ID";
 import "@univerjs/preset-sheets-core/lib/index.css";
+import { greenTheme } from "@univerjs/themes";
+import { ComponentManager, COLOR_PICKER_COMPONENT } from "@univerjs/ui";
+import { WorkbookColorPicker } from "@/components/excel/workbook-color-picker";
 import { saveUniverWorkbookAction } from "@/lib/actions/sheets";
 import { AutosaveQueue, type SaveState } from "@/lib/workbook/autosave";
 import { readDraft, writeDraft, deleteDraft } from "@/lib/workbook/drafts";
@@ -32,14 +35,24 @@ export default function UniverWorkbook({ projectId, snapshot, canWrite, revision
   const [message, setMessage] = useState("");
   const [mapping, setMapping] = useState(needsMapping);
   const [field, setField] = useState("project.volume");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(() => setIsFullscreen((f) => !f), []);
 
   useEffect(() => {
     if (!hostRef.current) return;
     const container = document.createElement("div"); container.className = "univer-workbook-canvas"; hostRef.current.append(container);
     const { univer, univerAPI } = createUniver({
+      theme: greenTheme,
       locale: LocaleType.ID_ID, locales: { [LocaleType.ID_ID]: mergeLocales(Indonesian) },
       presets: [UniverSheetsCorePreset({ container, contextMenu: true, toolbar: true, ribbonType: "classic" })],
     });
+    try {
+      const componentManager = univer.__getInjector().get(ComponentManager);
+      componentManager.register(COLOR_PICKER_COMPONENT, WorkbookColorPicker);
+    } catch {
+      // Fallback gracefully if DI not available
+    }
     const workbook = univerAPI.createWorkbook(structuredClone(initial.current) as unknown as IWorkbookData);
     workbook.setEditable(canWrite);
     let disposed = false;
@@ -80,6 +93,24 @@ export default function UniverWorkbook({ projectId, snapshot, canWrite, revision
     };
   }, [projectId, canWrite, revision]);
 
+  // Notify Univer to re-measure its canvas after fullscreen layout settles
+  useEffect(() => {
+    // Two-phase resize: immediate + after transition completes (~200ms)
+    window.dispatchEvent(new Event("resize"));
+    const id = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 220);
+    return () => window.clearTimeout(id);
+  }, [isFullscreen]);
+
+  // Close fullscreen on ESC key
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isFullscreen]);
+
   const downloadDraft = () => {
     void readDraft(projectId).then((value) => {
       if (!value) return;
@@ -87,16 +118,18 @@ export default function UniverWorkbook({ projectId, snapshot, canWrite, revision
       const a = document.createElement("a"); a.href = url; a.download = "draf-" + projectId + ".json"; a.click(); URL.revokeObjectURL(url);
     });
   };
-  return <section className="univer-workbook-shell" data-testid="workbook-physical-grid">
+  return <section className={`univer-workbook-shell${isFullscreen ? " is-fullscreen" : ""}`} data-testid="workbook-physical-grid">
     <WorkbookSaveBar
       state={state}
       message={message}
       canWrite={canWrite}
       mapping={mapping}
+      isFullscreen={isFullscreen}
       onRetry={() => { void queueRef.current?.flush(); }}
       onDownloadDraft={downloadDraft}
       onLoadLatest={() => location.reload()}
       onToggleMapping={() => setMapping((visible) => !visible)}
+      onToggleFullscreen={toggleFullscreen}
     />
     {mapping && canWrite ? <div className="flex flex-wrap items-center gap-2 p-3">
       <select id="business-field" aria-label="Isian yang akan dihubungkan" className="input max-w-xs" value={field} onChange={(event) => setField(event.target.value)}>

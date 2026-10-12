@@ -202,6 +202,12 @@ export function createProjectSheetsTemplate(input: {
   const formattedDate = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   writeBoundValue(snapshot, "ahs.tgl_analisis", formattedDate);
   writeBoundValue(snapshot, "ahs.analysis_date", formattedDate);
+  if (input.periodLabel) {
+    writeBoundValue(snapshot, "inu.periode", `Periode       : ${input.periodLabel}`);
+  }
+  if (input.location) {
+    writeBoundValue(snapshot, "inu.lokasi", `Lokasi        : ${input.location}`);
+  }
   return doc;
 }
 

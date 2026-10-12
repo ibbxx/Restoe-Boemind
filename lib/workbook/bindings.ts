@@ -124,6 +124,18 @@ export function initializeBindings(snapshot: Record<string, unknown>): void {
     bindField(snapshot, "result.laba_bersih_rbi", "AHS", "P37");
     bindField(snapshot, "result.laba_bersih_partner", "AHS", "P38");
     bindField(snapshot, "result.diskon", "AHS", "N6");
+
+    // Evaluasi Vendor (INU / MUE) derivative table slots
+    bindField(snapshot, "inu.periode", "AHS", "A18");
+    bindField(snapshot, "inu.lokasi", "AHS", "A19");
+    bindField(snapshot, "inu.nama_inu", "AHS", "A20");
+    bindField(snapshot, "inu.harga_dasar", "AHS", "B22");
+    bindField(snapshot, "inu.biaya_harga_dasar", "AHS", "C22");
+    bindField(snapshot, "inu.ppn", "AHS", "B23");
+    bindField(snapshot, "inu.biaya_ppn", "AHS", "C23");
+    bindField(snapshot, "inu.all_in", "AHS", "B28");
+    bindField(snapshot, "inu.biaya_all_in", "AHS", "C28");
+    bindField(snapshot, "inu.profit_mue", "AHS", "B34");
   }
 }
 export function bindingPosition(snapshot: Record<string, unknown>, key: string): { sheetId: string; row: number; col: number } | null {
