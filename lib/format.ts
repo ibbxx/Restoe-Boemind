@@ -36,6 +36,7 @@ export function formatCurrency(
 export function formatRp(value: number | null | undefined, decimals = 0): string {
   return formatCurrency(value, { decimals });
 }
+export const formatRupiah = formatRp;
 
 export function formatNumber(
   value: number | null | undefined,

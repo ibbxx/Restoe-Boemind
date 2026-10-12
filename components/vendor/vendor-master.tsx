@@ -22,7 +22,7 @@ export function VendorMasterForm({
   if (!canWrite) {
     return (
       <p className="px-4 py-3 text-xs text-ink-500">
-        Role Anda read-only untuk master vendor — perubahan akan ditolak database (RLS: vendors_write).
+        Anda hanya dapat melihat data pemasok.
       </p>
     );
   }
@@ -32,19 +32,19 @@ export function VendorMasterForm({
   return (
     <form action={formAction} className="space-y-3 p-4">
       {mode === "edit" && vendor ? <input type="hidden" name="vendor_id" value={vendor.id} /> : null}
-      <FormAlerts state={state} successMessage={mode === "edit" ? "Vendor tersimpan." : "Vendor dibuat."} />
+      <FormAlerts state={state} successMessage={mode === "edit" ? "pemasok tersimpan." : "pemasok dibuat."} />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="Vendor Name" required error={err("name")}>
+        <Field label="Nama pemasok" required error={err("name")}>
           <input className="input" name="name" defaultValue={vendor?.name ?? ""} required />
         </Field>
-        <Field label="Contact">
+        <Field label="Kontak">
           <input className="input" name="contact" defaultValue={vendor?.contact ?? ""} />
         </Field>
-        <Field label="Armada" hint="Dipakai sebagai “Availability” pada vendor comparison.">
+        <Field label="Armada" hint="Dipakai sebagai “Availability” pada pemasok comparison.">
           <input className="input" name="armada" defaultValue={vendor?.armada ?? ""} />
         </Field>
-        <Field label="Stock" hint="Dipakai sebagai “Availability” pada vendor comparison.">
+        <Field label="Stock" hint="Dipakai sebagai “Availability” pada pemasok comparison.">
           <input className="input" name="stock" defaultValue={vendor?.stock ?? ""} />
         </Field>
         <Field label="Permit">
@@ -52,8 +52,8 @@ export function VendorMasterForm({
         </Field>
         <Field label="Status" error={err("status")}>
           <select className="input" name="status" defaultValue={vendor?.status ?? "ACTIVE"}>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INACTIVE">INACTIVE</option>
+            <option value="ACTIVE">Aktif</option>
+            <option value="INACTIVE">Tidak aktif</option>
           </select>
         </Field>
         <div className="md:col-span-2">
@@ -62,13 +62,13 @@ export function VendorMasterForm({
           </Field>
         </div>
         <div className="md:col-span-2 xl:col-span-4">
-          <Field label="Notes">
+          <Field label="Catatan">
             <textarea className="input" name="notes" rows={2} defaultValue={vendor?.notes ?? ""} />
           </Field>
         </div>
       </div>
 
-      <SubmitButton label={mode === "create" ? "Tambah vendor" : "Simpan vendor"} pendingLabel="Menyimpan…" />
+      <SubmitButton label={mode === "create" ? "Tambah pemasok" : "Simpan pemasok"} pendingLabel="Menyimpan…" />
     </form>
   );
 }

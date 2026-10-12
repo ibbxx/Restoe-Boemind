@@ -65,7 +65,7 @@ export async function updateVendorAction(
   if (!result.ok) {
     return { ok: false, error: result.error, ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) };
   }
-  revalidateCollection("/reports");
+  revalidateCollection("/projects");
   return { ok: true };
 }
 
@@ -83,7 +83,7 @@ export async function updateVendorPriceCellAction(
   if (isContextError(ctx)) return ctx;
   const result = await updateVendorPriceCell(ctx.db, ctx.actor, projectId, vendorId, field, raw);
   if (result.ok) {
-    revalidateProject(projectId, { reports: true, commercial: true, history: true });
+    revalidateProject(projectId);
   }
   return result;
 }
@@ -99,7 +99,7 @@ export async function addVendorColumnAction(
   const ctx = await actionContext();
   if (isContextError(ctx)) return ctx;
   const result = await addVendorColumnByName(ctx.db, ctx.actor, projectId, name);
-  if (result.ok) revalidateProject(projectId, { reports: true, commercial: true, history: true });
+  if (result.ok) revalidateProject(projectId);
   return result;
 }
 
@@ -112,7 +112,7 @@ export async function renameVendorColumnAction(
   const ctx = await actionContext();
   if (isContextError(ctx)) return ctx;
   const result = await renameVendorColumn(ctx.db, ctx.actor, projectId, vendorId, name);
-  if (result.ok) revalidateProject(projectId, { reports: true, commercial: true, history: true });
+  if (result.ok) revalidateProject(projectId);
   return result;
 }
 
@@ -137,7 +137,7 @@ export async function addVendorToProjectAction(
   if (!result.ok) {
     return { ok: false, error: result.error, ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) };
   }
-  revalidateProject(projectId, { reports: true, commercial: true, history: true });
+  revalidateProject(projectId);
   return { ok: true };
 }
 
@@ -149,7 +149,7 @@ export async function removeVendorFromProjectAction(
   if (isContextError(ctx)) return ctx;
   const result = await removeVendorFromProject(ctx.db, ctx.actor, projectId, linkId);
   if (result.ok) {
-    revalidateProject(projectId, { reports: true, commercial: true, history: true });
+    revalidateProject(projectId);
   }
   return result;
 }
@@ -163,7 +163,7 @@ export async function setSelectedVendorAction(
   if (isContextError(ctx)) return ctx;
   const result = await setSelectedVendor(ctx.db, ctx.actor, projectId, linkId, isSelected);
   if (result.ok) {
-    revalidateProject(projectId, { reports: true, commercial: true, history: true });
+    revalidateProject(projectId);
   }
   return result;
 }
@@ -198,6 +198,6 @@ export async function saveVendorPriceAction(
   if (!result.ok) {
     return { ok: false, error: result.error, ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) };
   }
-    revalidateProject(projectId, { reports: true, commercial: true, history: true });
+    revalidateProject(projectId);
   return { ok: true };
 }

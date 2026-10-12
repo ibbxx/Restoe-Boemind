@@ -1,23 +1,19 @@
 "use server";
 
-import { zfd } from "zod-form-data";
-import { zfdNumberNullable, zfdRate, zfdStringNullable } from "./validations";
+import { revalidatePath } from "next/cache";
+
 import { actionContext, isContextError } from "./context";
+import { formNumber, formOptionalText, formRate, formText } from "./form";
 import {
   addCostItem,
   previewAhsCalculation,
   removeCostItem,
   saveAhsInputs,
-  updateAhsInputCell,
   updateCostItem,
-  updateCostItemCell,
   type AhsInputFormValue,
-  type CostItemView,
 } from "../services/ahs";
 import type { AhsResult } from "../calculations/types";
 import type { ActionResult } from "../services/result";
-import { revalidateProject } from "../revalidation";
-import { fieldErrorsFromZod } from "./errors";
 
 export interface AhsFormState {
   ok: boolean;
@@ -28,23 +24,24 @@ export interface AhsFormState {
   result?: AhsResult | null;
 }
 
-const AhsInputSchema = zfd.formData({
-  project_id: zfd.text(),
-  volume: zfdNumberNullable(),
-  harga_jual_include: zfdNumberNullable(),
-  include_divisor: zfdNumberNullable().transform(v => v ?? 1.11),
-  ppn_rate: zfdRate(0.11),
-  pbbkb_rate: zfdRate(0),
-  pph_inu_rate: zfdRate(0),
-  bph_migas_rate: zfdRate(0),
-  harga_keekonomian: zfdNumberNullable(),
-  marketing: zfdStringNullable(),
-  payment_term: zfdStringNullable(),
-  document_scheme: zfdStringNullable(),
-  analysis_date: zfdStringNullable(),
-  notes: zfdStringNullable(),
-  reason: zfdStringNullable(),
-});
+function readAhsForm(formData: FormData): AhsInputFormValue {
+  return {
+    volume: formNumber(formData, "volume"),
+    harga_jual_include: formNumber(formData, "harga_jual_include"),
+    include_divisor: formNumber(formData, "include_divisor") ?? 1.11,
+    ppn_rate: formRate(formData, "ppn_rate", 0.11),
+    pbbkb_rate: formRate(formData, "pbbkb_rate", 0),
+    pph_inu_rate: formRate(formData, "pph_inu_rate", 0),
+    bph_migas_rate: formRate(formData, "bph_migas_rate", 0),
+    harga_keekonomian: formNumber(formData, "harga_keekonomian"),
+    marketing: formOptionalText(formData, "marketing"),
+    payment_term: formOptionalText(formData, "payment_term"),
+    document_scheme: formOptionalText(formData, "document_scheme"),
+    analysis_date: formOptionalText(formData, "analysis_date"),
+    notes: formOptionalText(formData, "notes"),
+    reason: formOptionalText(formData, "reason"),
+  };
+}
 
 export async function saveAhsInputsAction(
   _prev: AhsFormState | null,
@@ -53,33 +50,14 @@ export async function saveAhsInputsAction(
   const ctx = await actionContext();
   if (isContextError(ctx)) return { ok: false, error: ctx.error };
 
-  const parsed = AhsInputSchema.safeParse(formData);
-  if (!parsed.success) {
-    return { ok: false, error: "Data form tidak valid", fieldErrors: fieldErrorsFromZod(parsed.error) };
-  }
-  const data = parsed.data;
-
-  const result = await saveAhsInputs(ctx.db, ctx.actor, data.project_id, {
-    volume: data.volume,
-    harga_jual_include: data.harga_jual_include,
-    include_divisor: data.include_divisor,
-    ppn_rate: data.ppn_rate,
-    pbbkb_rate: data.pbbkb_rate,
-    pph_inu_rate: data.pph_inu_rate,
-    bph_migas_rate: data.bph_migas_rate,
-    harga_keekonomian: data.harga_keekonomian,
-    marketing: data.marketing,
-    payment_term: data.payment_term,
-    document_scheme: data.document_scheme,
-    analysis_date: data.analysis_date,
-    notes: data.notes,
-    reason: data.reason,
-  });
+  const projectId = formText(formData, "project_id");
+  const result = await saveAhsInputs(ctx.db, ctx.actor, projectId, readAhsForm(formData));
   if (!result.ok) {
     return { ok: false, error: result.error, ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) };
   }
 
-  revalidateProject(data.project_id, { ahs: true, reports: true, commercial: true, history: true });
+  revalidatePath(`/projects/${projectId}/ahs`);
+  revalidatePath(`/projects/${projectId}`);
   return {
     ok: true,
     result: result.data.preview,
@@ -118,17 +96,6 @@ export async function previewAhsAction(
   });
 }
 
-const CostItemSchema = zfd.formData({
-  project_id: zfd.text(),
-  line_no: zfdNumberNullable().transform(v => v ?? 0),
-  category: zfdStringNullable(),
-  description: zfd.text(),
-  unit: zfdStringNullable(),
-  rate: zfdNumberNullable().transform(v => v ?? 0),
-  qty: zfdNumberNullable().transform(v => v ?? 0),
-  reason: zfdStringNullable(),
-});
-
 export async function addCostItemAction(
   _prev: AhsFormState | null,
   formData: FormData,
@@ -136,39 +103,23 @@ export async function addCostItemAction(
   const ctx = await actionContext();
   if (isContextError(ctx)) return { ok: false, error: ctx.error };
 
-  const parsed = CostItemSchema.safeParse(formData);
-  if (!parsed.success) {
-    return { ok: false, error: "Data cost item tidak valid", fieldErrors: fieldErrorsFromZod(parsed.error) };
-  }
-  const data = parsed.data;
-
-  const result = await addCostItem(ctx.db, ctx.actor, data.project_id, {
-    line_no: data.line_no,
-    category: data.category,
-    description: data.description,
-    unit: data.unit,
-    rate: data.rate,
-    qty: data.qty,
-    reason: data.reason,
+  const projectId = formText(formData, "project_id");
+  const result = await addCostItem(ctx.db, ctx.actor, projectId, {
+    line_no: formNumber(formData, "line_no"),
+    category: formOptionalText(formData, "category"),
+    description: formText(formData, "description"),
+    unit: formOptionalText(formData, "unit"),
+    rate: formNumber(formData, "rate"),
+    qty: formNumber(formData, "qty"),
+    reason: formOptionalText(formData, "reason"),
   });
   if (!result.ok) {
     return { ok: false, error: result.error, ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) };
   }
-  revalidateProject(data.project_id, { ahs: true, reports: true, commercial: true, history: true });
+  revalidatePath(`/projects/${projectId}/ahs`);
+  revalidatePath(`/projects/${projectId}`);
   return { ok: true, ...(result.warnings ? { warnings: result.warnings } : {}) };
 }
-
-const UpdateCostItemSchema = zfd.formData({
-  project_id: zfd.text(),
-  item_id: zfd.text(),
-  line_no: zfdNumberNullable().transform(v => v ?? 0),
-  category: zfdStringNullable(),
-  description: zfd.text(),
-  unit: zfdStringNullable(),
-  rate: zfdNumberNullable().transform(v => v ?? 0),
-  qty: zfdNumberNullable().transform(v => v ?? 0),
-  reason: zfdStringNullable(),
-});
 
 export async function updateCostItemAction(
   _prev: AhsFormState | null,
@@ -177,59 +128,22 @@ export async function updateCostItemAction(
   const ctx = await actionContext();
   if (isContextError(ctx)) return { ok: false, error: ctx.error };
 
-  const parsed = UpdateCostItemSchema.safeParse(formData);
-  if (!parsed.success) {
-    return { ok: false, error: "Data cost item tidak valid", fieldErrors: fieldErrorsFromZod(parsed.error) };
-  }
-  const data = parsed.data;
-
-  const result = await updateCostItem(ctx.db, ctx.actor, data.project_id, data.item_id, {
-    category: data.category,
-    description: data.description,
-    unit: data.unit,
-    rate: data.rate,
-    qty: data.qty,
-    reason: data.reason,
+  const projectId = formText(formData, "project_id");
+  const itemId = formText(formData, "item_id");
+  const result = await updateCostItem(ctx.db, ctx.actor, projectId, itemId, {
+    category: formOptionalText(formData, "category"),
+    description: formText(formData, "description"),
+    unit: formOptionalText(formData, "unit"),
+    rate: formNumber(formData, "rate"),
+    qty: formNumber(formData, "qty"),
+    reason: formOptionalText(formData, "reason"),
   });
   if (!result.ok) {
     return { ok: false, error: result.error, ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}) };
   }
-  revalidateProject(data.project_id, { ahs: true, reports: true, commercial: true, history: true });
+  revalidatePath(`/projects/${projectId}/ahs`);
+  revalidatePath(`/projects/${projectId}`);
   return { ok: true, ...(result.warnings ? { warnings: result.warnings } : {}) };
-}
-
-/**
- * SPREADSHEET CELL EDIT (grid workspace): ubah satu sel input AHS.
- * `raw` kosong = null (bukan 0); nilai lain di-merge di server.
- */
-export async function updateAhsInputCellAction(
-  projectId: string,
-  field: string,
-  raw: string,
-): Promise<ActionResult<{ id: string; preview: AhsResult | null }>> {
-  const ctx = await actionContext();
-  if (isContextError(ctx)) return ctx;
-  const result = await updateAhsInputCell(ctx.db, ctx.actor, projectId, field, raw);
-  if (result.ok) {
-    revalidateProject(projectId, { ahs: true, reports: true, commercial: true, history: true });
-  }
-  return result;
-}
-
-/** SPREADSHEET CELL EDIT (grid workspace): ubah satu sel cost item. */
-export async function updateCostItemCellAction(
-  projectId: string,
-  itemId: string,
-  field: string,
-  raw: string,
-): Promise<ActionResult<CostItemView>> {
-  const ctx = await actionContext();
-  if (isContextError(ctx)) return ctx;
-  const result = await updateCostItemCell(ctx.db, ctx.actor, projectId, itemId, field, raw);
-  if (result.ok) {
-    revalidateProject(projectId, { ahs: true, reports: true, commercial: true, history: true });
-  }
-  return result;
 }
 
 export async function removeCostItemAction(
@@ -240,7 +154,8 @@ export async function removeCostItemAction(
   if (isContextError(ctx)) return ctx;
   const result = await removeCostItem(ctx.db, ctx.actor, projectId, itemId);
   if (result.ok) {
-    revalidateProject(projectId, { ahs: true, reports: true, commercial: true, history: true });
+    revalidatePath(`/projects/${projectId}/ahs`);
+    revalidatePath(`/projects/${projectId}`);
   }
   return result;
 }

@@ -14,13 +14,12 @@ import type { Actor } from "../auth/session";
 import { calculateVendorAllIn, calculateVendorPpn } from "../calculations/vendor";
 import { validateVendorPrice } from "../calculations/validation";
 import { CalculationError } from "../calculations/errors";
-import { eq, searchAcross, type Database } from "../data/db";
+import { atomic, eq, type Database } from "../data/db";
 import { createVendorRepository } from "../data/repositories/vendor-repository";
 import { parseNumericInput, toNumber } from "../format";
 import type { ProjectVendor, Vendor, VendorPrice } from "../types/domain";
 import { isActionErr, loadProjectContext } from "./access";
-import { buildImpact, recordHistory } from "./history";
-import { buildPage, normalisePage, normalisePageSize, toRange, type Page } from "./pagination";
+import { buildPage, normalisePage, normalisePageSize, type Page } from "./pagination";
 import { err, forbidden, notFound, ok, toActionResultError, type ActionResult } from "./result";
 
 export interface VendorListRowView {
@@ -98,10 +97,10 @@ export interface VendorFormInput {
 
 export function validateVendorForm(input: VendorFormInput): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (!input.name || input.name.trim() === "") errors.name = "Nama vendor wajib diisi.";
-  else if (input.name.trim().length > 200) errors.name = "Nama vendor maksimal 200 karakter.";
+  if (!input.name || input.name.trim() === "") errors.name = "Nama pemasok wajib diisi.";
+  else if (input.name.trim().length > 200) errors.name = "Nama pemasok maksimal 200 karakter.";
   if (input.status !== "ACTIVE" && input.status !== "INACTIVE") {
-    errors.status = "Status vendor harus ACTIVE atau INACTIVE.";
+    errors.status = "Status pemasok harus ACTIVE atau INACTIVE.";
   }
   return errors;
 }
@@ -111,7 +110,7 @@ export async function createVendor(
   actor: Actor,
   input: VendorFormInput,
 ): Promise<ActionResult<Vendor>> {
-  if (!can("write_master_data", actor.role)) return forbidden("menambah vendor");
+  if (!can("write_master_data", actor.role)) return forbidden("menambah pemasok");
 
   const fieldErrors = validateVendorForm(input);
   if (Object.keys(fieldErrors).length > 0) {
@@ -122,8 +121,8 @@ export async function createVendor(
     const repo = createVendorRepository(db);
     const duplicate = await repo.findByName(input.name.trim());
     if (duplicate) {
-      return err("Nama vendor sudah terdaftar.", {
-        fieldErrors: { name: "Nama vendor sudah terdaftar." },
+      return err("Nama pemasok sudah terdaftar.", {
+        fieldErrors: { name: "Nama pemasok sudah terdaftar." },
         errorCode: "INVALID_INPUT",
       });
     }
@@ -151,7 +150,7 @@ export async function updateVendor(
   vendorId: string,
   input: VendorFormInput,
 ): Promise<ActionResult<Vendor>> {
-  if (!can("write_master_data", actor.role)) return forbidden("mengubah vendor");
+  if (!can("write_master_data", actor.role)) return forbidden("mengubah pemasok");
 
   const fieldErrors = validateVendorForm(input);
   if (Object.keys(fieldErrors).length > 0) {
@@ -190,7 +189,6 @@ export interface VendorPriceRowView {
   id: string;
   project_id: string;
   vendor_id: string;
-  scenario_id: string | null;
   base_price: number | null;
   ppn_rate: number | null;
   ppn_amount: number | null;
@@ -212,7 +210,6 @@ export function toVendorPriceView(row: VendorPrice): VendorPriceRowView {
     id: row.id,
     project_id: row.project_id,
     vendor_id: row.vendor_id,
-    scenario_id: row.scenario_id,
     base_price: toNumber(row.base_price),
     ppn_rate: toNumber(row.ppn_rate),
     ppn_amount: toNumber(row.ppn_amount),
@@ -281,6 +278,11 @@ export async function listProjectVendors(
 }
 
 export async function addVendorToProject(
+  db: Database, actor: Actor, projectId: string, vendorId: string, evaluationNote?: string | null,
+): Promise<ActionResult<ProjectVendor>> {
+  return atomic(db, (tx) => addVendorToProjectInternal(tx, actor, projectId, vendorId, evaluationNote));
+}
+async function addVendorToProjectInternal(
   db: Database,
   actor: Actor,
   projectId: string,
@@ -289,7 +291,7 @@ export async function addVendorToProject(
 ): Promise<ActionResult<ProjectVendor>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
-  if (ctx.access === "VIEW") return forbidden("menambahkan vendor ke project (akses read-only)");
+  if (ctx.access === "VIEW") return forbidden("menambahkan pemasok ke proyek (akses read-only)");
 
   try {
     const repo = createVendorRepository(db);
@@ -298,8 +300,8 @@ export async function addVendorToProject(
 
     const existing = await repo.getProjectLink(projectId, vendorId);
     if (existing) {
-      return err("Vendor sudah ada pada project ini.", {
-        fieldErrors: { vendor_id: "Vendor sudah ada pada project ini." },
+      return err("pemasok sudah ada pada proyek ini.", {
+        fieldErrors: { vendor_id: "pemasok sudah ada pada proyek ini." },
         errorCode: "INVALID_INPUT",
       });
     }
@@ -310,22 +312,13 @@ export async function addVendorToProject(
       is_selected: false,
       evaluation_note: evaluationNote ?? null,
     });
+    if (db.local) {
+      const { patchVendorWorkbook } = await import("./editor");
+      const saved = await patchVendorWorkbook(db, actor, projectId, vendorId, {});
+      if (!saved.ok) return saved;
+    }
 
-    const warnings: string[] = [];
-    const audited = await recordHistory(db, {
-      projectId,
-      entity: "project_vendors",
-      entityId: link.id,
-      action: "INSERT",
-      field: "vendor",
-      oldValue: null,
-      newValue: vendor.name,
-      reason: "Vendor ditambahkan ke project",
-      changedBy: actor.id,
-    });
-    if (!audited) warnings.push("History tidak dapat ditulis.");
-
-    return ok(link, warnings);
+    return ok(link);
   } catch (e) {
     return toActionResultError(e, "project_vendors");
   }
@@ -340,6 +333,11 @@ export async function addVendorToProject(
  * itu seperti di Excel.
  */
 export async function addVendorColumnByName(
+  db: Database, actor: Actor, projectId: string, name: string,
+): Promise<ActionResult<{ link: ProjectVendor; vendor: Vendor }>> {
+  return atomic(db, (tx) => addVendorColumnByNameInternal(tx, actor, projectId, name));
+}
+async function addVendorColumnByNameInternal(
   db: Database,
   actor: Actor,
   projectId: string,
@@ -347,19 +345,19 @@ export async function addVendorColumnByName(
 ): Promise<ActionResult<{ link: ProjectVendor; vendor: Vendor }>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
-  if (ctx.access === "VIEW") return forbidden("menambah kolom vendor (akses lihat saja)");
+  if (ctx.access === "VIEW") return forbidden("menambah kolom pemasok (akses lihat saja)");
 
   const trimmed = name.trim();
   if (trimmed === "") {
-    return err("Nama vendor wajib diisi.", {
+    return err("Nama pemasok wajib diisi.", {
       errorCode: "INVALID_INPUT",
-      fieldErrors: { name: "Nama vendor wajib diisi." },
+      fieldErrors: { name: "Nama pemasok wajib diisi." },
     });
   }
   if (trimmed.length > 120) {
-    return err("Nama vendor maksimal 120 karakter.", {
+    return err("Nama pemasok maksimal 120 karakter.", {
       errorCode: "INVALID_INPUT",
-      fieldErrors: { name: "Nama vendor terlalu panjang." },
+      fieldErrors: { name: "Nama pemasok terlalu panjang." },
     });
   }
 
@@ -367,6 +365,7 @@ export async function addVendorColumnByName(
     const repo = createVendorRepository(db);
     let vendor = await repo.findByName(trimmed);
     if (!vendor) {
+      if (!can("write_master_data", actor.role)) return forbidden("menambah pemasok baru");
       vendor = await repo.create({ name: trimmed, status: "ACTIVE" });
     }
 
@@ -391,11 +390,11 @@ export async function renameVendorColumn(
 ): Promise<ActionResult<Vendor>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
-  if (ctx.access === "VIEW") return forbidden("mengubah nama vendor (akses lihat saja)");
+  if (ctx.access === "VIEW") return forbidden("mengubah nama pemasok (akses lihat saja)");
 
   const trimmed = name.trim();
   if (trimmed === "") {
-    return err("Nama vendor tidak boleh kosong.", { errorCode: "INVALID_INPUT" });
+    return err("Nama pemasok tidak boleh kosong.", { errorCode: "INVALID_INPUT" });
   }
 
   try {
@@ -403,19 +402,17 @@ export async function renameVendorColumn(
     const vendor = await repo.getById(vendorId);
     if (!vendor) return notFound("Vendor");
     if (vendor.name === trimmed) return ok(vendor);
+    if (db.local) {
+      return atomic(db, async (tx) => {
+        const { patchVendorWorkbook } = await import("./editor");
+        const saved = await patchVendorWorkbook(tx, actor, projectId, vendorId, { name: trimmed });
+        if (!saved.ok) return saved;
+        const renamed = (await tx.select<Vendor>("vendors", { where: [eq("name", trimmed)], limit: 1 })).rows[0];
+        return renamed ? ok(renamed) : notFound("Pemasok");
+      });
+    }
 
     const updated = await repo.update(vendorId, { name: trimmed });
-    await recordHistory(db, {
-      projectId,
-      entity: "vendors",
-      entityId: vendorId,
-      action: "UPDATE",
-      field: "name",
-      oldValue: vendor.name,
-      newValue: trimmed,
-      reason: "Nama vendor diubah dari workspace",
-      changedBy: actor.id,
-    });
     return ok(updated);
   } catch (e) {
     return toActionResultError(e, "vendors");
@@ -423,6 +420,11 @@ export async function renameVendorColumn(
 }
 
 export async function removeVendorFromProject(
+  db: Database, actor: Actor, projectId: string, linkId: string,
+): Promise<ActionResult<{ id: string }>> {
+  return atomic(db, (tx) => removeVendorFromProjectInternal(tx, actor, projectId, linkId));
+}
+async function removeVendorFromProjectInternal(
   db: Database,
   actor: Actor,
   projectId: string,
@@ -430,30 +432,21 @@ export async function removeVendorFromProject(
 ): Promise<ActionResult<{ id: string }>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
-  if (ctx.access === "VIEW") return forbidden("menghapus vendor dari project (akses read-only)");
+  if (ctx.access === "VIEW") return forbidden("menghapus pemasok dari proyek (akses read-only)");
 
   try {
     const repo = createVendorRepository(db);
     const link = await repo.getProjectLinkById(linkId);
-    if (!link || link.project_id !== projectId) return notFound("Vendor pada project");
+    if (!link || link.project_id !== projectId) return notFound("pemasok pada proyek");
 
+    if (db.local) {
+      const { patchVendorWorkbook } = await import("./editor");
+      const saved = await patchVendorWorkbook(db, actor, projectId, link.vendor_id, { name: null });
+      if (!saved.ok) return saved;
+    }
     await repo.removeProjectLink(linkId);
 
-    const warnings: string[] = [];
-    const audited = await recordHistory(db, {
-      projectId,
-      entity: "project_vendors",
-      entityId: linkId,
-      action: "DELETE",
-      field: "vendor",
-      oldValue: link.vendor_id,
-      newValue: null,
-      reason: "Vendor dihapus dari project",
-      changedBy: actor.id,
-    });
-    if (!audited) warnings.push("History tidak dapat ditulis.");
-
-    return ok({ id: linkId }, warnings);
+    return ok({ id: linkId });
   } catch (e) {
     return toActionResultError(e, "project_vendors");
   }
@@ -468,9 +461,11 @@ export async function setSelectedVendor(
 ): Promise<ActionResult<ProjectVendor>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
-  if (ctx.access === "VIEW") return forbidden("mengubah vendor terpilih (akses read-only)");
+  if (ctx.access === "VIEW") return forbidden("mengubah pemasok terpilih (akses read-only)");
   try {
     const repo = createVendorRepository(db);
+    const current = await db.select<ProjectVendor>("project_vendors", { where: [eq("id", linkId), eq("project_id", projectId)], limit: 1 });
+    if (!current.rows.length) return notFound("Pemasok pada proyek");
     const link = await repo.updateProjectLink(linkId, {
       is_selected: isSelected,
     });
@@ -553,6 +548,11 @@ export function computeVendorPrice(input: VendorPriceInput): ActionResult<Vendor
 }
 
 export async function saveVendorPrice(
+  db: Database, actor: Actor, projectId: string, vendorId: string, input: VendorPriceInput,
+): Promise<ActionResult<VendorPriceRowView>> {
+  return atomic(db, (tx) => saveVendorPriceInternal(tx, actor, projectId, vendorId, input));
+}
+async function saveVendorPriceInternal(
   db: Database,
   actor: Actor,
   projectId: string,
@@ -561,7 +561,7 @@ export async function saveVendorPrice(
 ): Promise<ActionResult<VendorPriceRowView>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
-  if (ctx.access === "VIEW") return forbidden("menyimpan harga vendor (akses read-only)");
+  if (ctx.access === "VIEW") return forbidden("menyimpan harga pemasok (akses read-only)");
 
   const computed = computeVendorPrice(input);
   if (!computed.ok) return computed;
@@ -572,6 +572,15 @@ export async function saveVendorPrice(
     if (!vendor) return notFound("Vendor");
 
     const previous = await repo.getLatestPrice(projectId, vendorId);
+    if (db.local) {
+      const { patchVendorWorkbook } = await import("./editor");
+      const fields = Object.fromEntries(Object.entries(input).filter(([key]) => ["base_price", "ppn_rate", "ppn_amount", "pbbkb_amount", "pph_amount", "oat_amount", "ppn_oat_amount", "bph_amount", "extra_component_label", "note"].includes(key)));
+      if (input.ppn_is_formula !== false) delete fields.ppn_amount;
+      const saved = await patchVendorWorkbook(db, actor, projectId, vendorId, fields, { ppnFormula: input.ppn_is_formula !== false, allInVariant: input.all_in_variant });
+      if (!saved.ok) return saved;
+      const price = await repo.getLatestPrice(projectId, vendorId);
+      return price ? ok(toVendorPriceView(price)) : notFound("Harga pemasok");
+    }
 
     const payload: Record<string, unknown> = {
       project_id: projectId,
@@ -596,26 +605,7 @@ export async function saveVendorPrice(
       ? await repo.updatePrice(previous.id, payload)
       : await repo.createPrice(payload);
 
-    const warnings: string[] = [];
-    const before = previous ? toNumber(previous.all_in_amount) : null;
-    const audited = await recordHistory(db, {
-      projectId,
-      entity: "vendor_prices",
-      entityId: saved.id,
-      action: previous ? "UPDATE" : "INSERT",
-      field: "base_price",
-      oldValue: previous ? toNumber(previous.base_price) : null,
-      newValue: input.base_price,
-      reason: input.reason ?? (previous ? "Harga vendor diubah" : "Harga vendor ditambahkan"),
-      impact: buildImpact(
-        { all_in: before },
-        { all_in: computed.data.all_in },
-      ),
-      changedBy: actor.id,
-    });
-    if (!audited) warnings.push("History tidak dapat ditulis.");
-
-    return ok(toVendorPriceView(saved), warnings);
+    return ok(toVendorPriceView(saved));
   } catch (e) {
     return toActionResultError(e, "vendor_prices");
   }
@@ -673,7 +663,7 @@ export async function updateVendorPriceCell(
       extra_component_label: current?.extra_component_label ?? null,
       all_in_variant: current?.all_in_formula_id === "F002A" ? "F002A" : "F002B",
       note: current?.note ?? null,
-      reason: "Sel harga vendor diubah dari grid spreadsheet",
+      reason: "Sel harga pemasok diubah dari grid spreadsheet",
     };
 
     if (VENDOR_TEXT_CELL_FIELDS.has(field)) {

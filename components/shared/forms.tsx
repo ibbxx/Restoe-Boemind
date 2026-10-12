@@ -156,8 +156,8 @@ export function AsyncActionButton({
 
       {confirming ? (
           <ConfirmDialog
-          title={confirmTitle ?? "Confirm action"}
-          message={confirmMessage ?? "This action cannot be undone."}
+          title={confirmTitle ?? "Konfirmasi tindakan"}
+          message={confirmMessage ?? "Tindakan ini tidak dapat dibatalkan."}
           pending={pending}
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
@@ -173,7 +173,7 @@ export function AsyncActionButton({
 export function ConfirmDialog({
   title,
   message,
-  confirmLabel = "Confirm",
+  confirmLabel = "Konfirmasi",
   pending,
   onCancel,
   onConfirm,
@@ -192,10 +192,10 @@ export function ConfirmDialog({
         <p className="mt-2 text-xs text-ink-600">{message}</p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onCancel} disabled={pending}>
-            Cancel
+            Batal
           </button>
           <button type="button" className="btn-danger" onClick={onConfirm} disabled={pending}>
-            {pending ? "Working…" : confirmLabel}
+            {pending ? "Memproses…" : confirmLabel}
           </button>
         </div>
       </div>

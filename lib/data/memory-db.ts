@@ -2,8 +2,8 @@
  * In-memory implementation of the Database port.
  *
  * Used ONLY by tests (never by the application): it lets the full user workflow
- * — project → vendor → price → AHS → scenario → comparison → history — run
- * end-to-end through the REAL services without a hosted Supabase.
+ * — project → vendor → price → AHS → workbook — run end-to-end through the
+ * REAL services without a hosted Supabase.
  *
  * It deliberately mimics the parts of PostgREST/Supabase semantics the services
  * rely on:
@@ -17,6 +17,7 @@
  */
 
 import type { Database, Filter, OrderBy, QueryResult, SelectOptions, TableName } from "./db";
+import { unique, relations } from "./sqlite-schema.mjs";
 
 export type Row = Record<string, unknown>;
 
@@ -120,7 +121,20 @@ export function createMemoryDatabase(options: MemoryDatabaseOptions = {}): Datab
     }
   }
 
-  return {
+  function validate(name: TableName, row: Row, except?: string): void {
+    const groups = (unique as Partial<Record<TableName, string[][]>>)[name] ?? [];
+    for (const keys of [["id"], ...groups]) {
+      if (keys.every((key) => row[key] != null) && table(name).some((r) => r.id !== except && keys.every((key) => r[key] === row[key]))) {
+        throw new Error(`unique constraint: ${name}.${keys.join(",")}`);
+      }
+    }
+    const refs = (relations as Partial<Record<TableName, Record<string, TableName>>>)[name] ?? {};
+    for (const [key, target] of Object.entries(refs)) {
+      if (row[key] != null && !table(target).some((r) => r.id === row[key])) throw new Error(`foreign key: ${name}.${key}`);
+    }
+  }
+  let queue: Promise<unknown> = Promise.resolve();
+  const base: Database = {
     live: false,
 
     async select<T>(name: TableName, opts: SelectOptions = {}): Promise<QueryResult<T>> {
@@ -155,9 +169,10 @@ export function createMemoryDatabase(options: MemoryDatabaseOptions = {}): Datab
         created_at: (values.created_at as string) ?? now,
         ...values,
       };
-      if ("updated_at" in row || name !== "project_history") {
+      if ("updated_at" in row) {
         row.updated_at = (values.updated_at as string) ?? now;
       }
+      validate(name, row);
       table(name).push(row);
       return clone(row) as T;
     },
@@ -170,6 +185,7 @@ export function createMemoryDatabase(options: MemoryDatabaseOptions = {}): Datab
       const current = rows[index]!;
       const next: Row = { ...current, ...patch };
       if ("updated_at" in current) next.updated_at = new Date().toISOString();
+      validate(name, next, id);
       rows[index] = next;
       return clone(next) as T;
     },
@@ -180,8 +196,33 @@ export function createMemoryDatabase(options: MemoryDatabaseOptions = {}): Datab
       const index = rows.findIndex((r) => r.id === id);
       if (index === -1) return;
       rows.splice(index, 1);
+      for (const [child, refs] of Object.entries(relations)) {
+        for (const [key, target] of Object.entries(refs)) {
+          if (target === name && ["project_id", "ahs_id"].includes(key)) {
+            for (const dependent of [...table(child as TableName)]) {
+              if (dependent[key] === id) await base.remove(child as TableName, String(dependent.id));
+            }
+          }
+        }
+      }
     },
   } satisfies Database;
+  const serial = <T>(work: () => Promise<T>): Promise<T> => {
+    const result = queue.then(work); queue = result.catch(() => undefined); return result;
+  };
+  const tx: Database = { ...base, transaction: async (work) => work(tx) };
+  return {
+    ...base,
+    select: (name, opts) => serial(() => base.select(name, opts)),
+    insert: (name, values) => serial(() => base.insert(name, values)),
+    update: (name, id, patch) => serial(() => base.update(name, id, patch)),
+    remove: (name, id) => serial(() => base.remove(name, id)),
+    transaction: (work) => serial(async () => {
+      const before = new Map([...tables].map(([name, rows]) => [name, clone(rows)]));
+      try { return await work(tx); }
+      catch (error) { tables.clear(); for (const [name, rows] of before) tables.set(name, rows); throw error; }
+    }),
+  };
 }
 
 function stableSort(rows: Row[], order: OrderBy): Row[] {

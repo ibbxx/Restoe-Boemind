@@ -13,6 +13,7 @@ import type { Database } from "../data/db";
 import { eq } from "../data/db";
 import type { AccessLevel, Project } from "../types/domain";
 import { notFound, type ActionErr } from "./result";
+import { cache } from "react";
 
 export interface ProjectContext {
   project: Project;
@@ -24,6 +25,7 @@ export async function resolveProjectAccess(
   actor: Actor,
   projectId: string,
 ): Promise<ProjectAccess> {
+  if (!actor.isActive) return "NONE";
   if (actor.role === "ADMIN" || actor.role === "PROCUREMENT") return "FULL";
 
   const { rows } = await db.select<{ access_level: AccessLevel }>("project_members", {
@@ -35,7 +37,7 @@ export async function resolveProjectAccess(
 }
 
 /** Loads the project row plus the caller's access level, or a NOT_FOUND error. */
-export async function loadProjectContext(
+export const loadProjectContext = cache(async function loadProjectContext(
   db: Database,
   actor: Actor,
   projectId: string,
@@ -45,13 +47,13 @@ export async function loadProjectContext(
     limit: 1,
   });
   const project = rows[0];
-  if (!project) return notFound("Project");
+  if (!project) return notFound("Proyek");
 
   const access = await resolveProjectAccess(db, actor, projectId);
-  if (access === "NONE") return notFound("Project");
+  if (access === "NONE") return notFound("Proyek");
 
   return { project, access };
-}
+});
 
 export function isActionErr(value: unknown): value is ActionErr {
   return (

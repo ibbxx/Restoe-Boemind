@@ -14,7 +14,7 @@ export default async function NewProjectPage() {
   if (isContextError(ctx)) {
     return (
       <>
-        <PageHeader title="New project" />
+        <PageHeader title="Proyek baru" />
         <ErrorState title="Form tidak dapat dimuat" message={ctx.error} code={ctx.errorCode} />
       </>
     );
@@ -25,14 +25,14 @@ export default async function NewProjectPage() {
   if (!can("create_project", ctx.actor.role)) {
     return (
       <>
-        <PageHeader title="New project" />
+        <PageHeader title="Proyek baru" />
         <ErrorState
-          title="Access denied"
+          title="Akses tidak tersedia"
           code="FORBIDDEN"
-          message={`The ${ctx.actor.role} role cannot create projects.`}
+          message="Anda tidak memiliki izin untuk membuat proyek."
           action={
             <Link href="/projects" className="btn-secondary">
-              Back to projects
+              Kembali ke daftar proyek
             </Link>
           }
         />
@@ -43,11 +43,10 @@ export default async function NewProjectPage() {
   return (
     <>
         <PageHeader
-        title="New project"
-        description="Validasi dilakukan sebelum database write. Setelah tersimpan Anda diarahkan ke halaman project."
+        title="Proyek baru"
         breadcrumb={
           <Link href="/projects" className="hover:underline">
-            ← Projects
+            ← proyek
           </Link>
         }
       />

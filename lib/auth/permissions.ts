@@ -11,7 +11,7 @@
  * reviewer can diff UI behaviour against the database without guessing.
  */
 
-import type { AccessLevel, PriceScenario, UserRole } from "../types/domain";
+import type { AccessLevel, UserRole } from "../types/domain";
 
 export const ROLES: UserRole[] = ["ADMIN", "PROCUREMENT", "PIC", "VIEWER"];
 
@@ -55,18 +55,6 @@ export const CAPABILITIES: Record<string, Capability> = {
     allowed: ["ADMIN"],
     policy: "formula_registry_write / calculation_templates_write using (is_admin())",
   },
-  delete_scenario: {
-    id: "delete_scenario",
-    label: "Delete scenario",
-    allowed: ["ADMIN"],
-    policy: "price_scenarios_delete using (is_admin())",
-  },
-  delete_calculation_result: {
-    id: "delete_calculation_result",
-    label: "Delete stored calculation result",
-    allowed: ["ADMIN"],
-    policy: "calculation_results_delete using (is_admin())",
-  },
   read_all_projects: {
     id: "read_all_projects",
     label: "Read every project (not only assigned ones)",
@@ -92,6 +80,7 @@ export function projectAccess(
 ): ProjectAccess {
   if (role === "ADMIN") return "FULL";
   if (role === "PROCUREMENT") return "FULL";
+  if (role === "VIEWER") return membership ? "VIEW" : "NONE";
   if (membership === "EDIT") return "EDIT";
   if (membership === "VIEW") return "VIEW";
   return "NONE";
@@ -115,11 +104,6 @@ export function canUpdateProject(access: ProjectAccess): boolean {
   return canWriteProject(access);
 }
 
-/** Scenario mutation is refused once the database locks a scenario. */
-export function canEditScenario(access: ProjectAccess, scenario: Pick<PriceScenario, "is_locked">): boolean {
-  return canWriteProject(access) && !scenario.is_locked;
-}
-
 /**
  * Calculated fields are written ONLY by the calculation engine.
  * The database enforces this with trg_ahs_protect_calculated, so no role — not
@@ -127,20 +111,11 @@ export function canEditScenario(access: ProjectAccess, scenario: Pick<PriceScena
  */
 export const CALCULATED_FIELDS_EDITABLE_BY_ANY_ROLE = false;
 
-/**
- * history is append-only: UPDATE and DELETE are rejected by
- * trg_history_append_only for every role, including ADMIN. So the UI must not
- * offer an edit/delete affordance at all.
- */
-export function canMutateHistory(): boolean {
-  return false;
-}
-
 export const PROJECT_ACCESS_LABELS: Record<ProjectAccess, string> = {
-  NONE: "No access",
-  VIEW: "Read only",
-  EDIT: "Read + write",
-  FULL: "Full access",
+  NONE: "Tidak memiliki akses",
+  VIEW: "Hanya lihat",
+  EDIT: "Dapat mengubah",
+  FULL: "Akses penuh",
 };
 
 export const ROLE_LABELS: Record<UserRole, string> = {

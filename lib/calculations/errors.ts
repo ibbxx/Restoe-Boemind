@@ -16,8 +16,7 @@ export type ErrorCode =
   | "EXPRESSION_ERROR"
   | "UNKNOWN_TEMPLATE"
   | "MISSING_COST_LINES"
-  | "MISSING_VENDOR_PRICE"
-  | "INVALID_SCENARIO";
+  | "MISSING_VENDOR_PRICE";
 
 export interface CalcFailure {
   success: false;

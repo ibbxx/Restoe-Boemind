@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "RBI · Analisis Harga Satuan",
   description:
-    "Digitalisasi ANALISIS HARGA SATUAN (2026).xlsx — project, vendor, AHS, commercial analysis, scenario dan history.",
+    "lembar kerja proyek dan evaluasi pemasok berbasis spreadsheet.",
   icons: { icon: "/rbi-logo.png" },
 };
 

@@ -2,274 +2,201 @@
 
 import { useActionState, useState, useTransition } from "react";
 
-import { previewAhsAction, saveAhsInputsAction, type AhsFormState } from "@/lib/actions/ahs";
+import { saveAhsInputsAction, previewAhsAction, type AhsFormState } from "@/lib/actions/ahs";
 import type { AhsResult } from "@/lib/calculations/types";
-import { formatRp, parseNumericInput } from "@/lib/format";
-import type { ActionErr } from "@/lib/services/result";
+import { formatPercent, formatRupiah } from "@/lib/format";
 import type { AhsInputsView } from "@/lib/services/ahs";
 import { FormAlerts, SubmitButton } from "@/components/shared/forms";
-import { Field, ReadOnlyValue } from "@/components/shared/primitives";
-import { CalculationErrorState } from "@/components/shared/states";
+import { Card, CardHeader, Field, StatCard } from "@/components/shared/primitives";
+import { ErrorState } from "@/components/shared/states";
 
-/**
- * AHS input form.
- *
- * "Hitung ulang (preview)" sends the CURRENT form values to a server action
- * which runs them through the calculation engine and returns the result. No
- * formula executes in the browser (Phase 3 §14) and nothing is persisted until
- * "Simpan input" is pressed.
- */
-export function AhsInputsForm({
-  projectId,
-  inputs,
-  canWrite,
-}: {
+export interface AhsInputsFormProps {
   projectId: string;
   inputs: AhsInputsView | null;
-  canWrite: boolean;
-}) {
-  const [state, formAction] = useActionState<AhsFormState | null, FormData>(saveAhsInputsAction, null);
-  const [pending, startTransition] = useTransition();
+  canWrite?: boolean;
+}
+
+export function AhsInputsForm({ projectId, inputs, canWrite = true }: AhsInputsFormProps) {
+  const [state, formAction] = useActionState<AhsFormState | null, FormData>(
+    saveAhsInputsAction,
+    null,
+  );
+
+  const [volume, setVolume] = useState<string>(inputs?.volume !== null && inputs?.volume !== undefined ? String(inputs.volume) : "");
+  const [hargaJualInclude, setHargaJualInclude] = useState<string>(
+    inputs?.harga_jual_include !== null && inputs?.harga_jual_include !== undefined ? String(inputs.harga_jual_include) : "",
+  );
+  const [includeDivisor, setIncludeDivisor] = useState<string>(
+    inputs?.include_divisor !== null && inputs?.include_divisor !== undefined ? String(inputs.include_divisor) : "1.11",
+  );
+  const [ppnRate, setPpnRate] = useState<string>(
+    inputs?.ppn_rate !== null && inputs?.ppn_rate !== undefined ? String(inputs.ppn_rate * 100) : "11",
+  );
+  const [pbbkbRate, setPbbkbRate] = useState<string>(
+    inputs?.pbbkb_rate !== null && inputs?.pbbkb_rate !== undefined ? String(inputs.pbbkb_rate * 100) : "0",
+  );
+  const [hargaKeekonomian, setHargaKeekonomian] = useState<string>(
+    inputs?.harga_keekonomian !== null && inputs?.harga_keekonomian !== undefined ? String(inputs.harga_keekonomian) : "",
+  );
+
   const [preview, setPreview] = useState<AhsResult | null>(null);
-  const [previewError, setPreviewError] = useState<ActionErr | null>(null);
-  const [form, setForm] = useState({
-    volume: inputs?.volume ?? null,
-    harga_jual_include: inputs?.harga_jual_include ?? null,
-    include_divisor: inputs?.include_divisor ?? 1.11,
-    ppn_rate: inputs?.ppn_rate ?? 0.11,
-    pbbkb_rate: inputs?.pbbkb_rate ?? 0,
-    harga_keekonomian: inputs?.harga_keekonomian ?? null,
-  });
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  const err = (field: string) => state?.fieldErrors?.[field];
-
-  const runPreview = () => {
-    setPreviewError(null);
+  const handleRecalc = () => {
     startTransition(async () => {
-      const result = await previewAhsAction(projectId, {
-        volume: form.volume,
-        harga_jual_include: form.harga_jual_include,
-        include_divisor: form.include_divisor,
-        ppn_rate: form.ppn_rate,
-        pbbkb_rate: form.pbbkb_rate,
-        harga_keekonomian: form.harga_keekonomian,
+      const vol = volume ? Number(volume) : null;
+      const hrg = hargaJualInclude ? Number(hargaJualInclude) : null;
+      const div = includeDivisor ? Number(includeDivisor) : null;
+      const ppn = ppnRate ? Number(ppnRate) / 100 : null;
+      const pbbkb = pbbkbRate ? Number(pbbkbRate) / 100 : null;
+      const keeko = hargaKeekonomian ? Number(hargaKeekonomian) : null;
+
+      const res = await previewAhsAction(projectId, {
+        volume: vol,
+        harga_jual_include: hrg,
+        include_divisor: div,
+        ppn_rate: ppn,
+        pbbkb_rate: pbbkb,
+        harga_keekonomian: keeko,
       });
-      if (result.ok) setPreview(result.data.result);
-      else {
-        setPreview(null);
-        setPreviewError(result);
+
+      if (res.ok) {
+        setPreview(res.data.result);
+        setPreviewError(null);
+      } else {
+        setPreviewError(res.error);
       }
     });
   };
 
-  const onNumericChange =
-    (key: keyof typeof form, isRate = false) =>
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const parsed = parseNumericInput(event.target.value);
-      setForm((prev) => ({
-        ...prev,
-        [key]: parsed === null ? null : isRate && Math.abs(parsed) > 1 ? parsed / 100 : parsed,
-      }));
-    };
+  const err = (field: string) => state?.fieldErrors?.[field];
 
   return (
-    <div className="space-y-3">
-      <form action={formAction} className="space-y-3 p-4">
+    <div className="space-y-6">
+      <form action={formAction} className="space-y-4">
         <input type="hidden" name="project_id" value={projectId} />
-        <FormAlerts state={state} successMessage="AHS inputs saved." />
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="Volume (liter)" required error={err("volume")}>
+        <FormAlerts
+          state={state}
+          successMessage="Input parameter AHS berhasil disimpan."
+        />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Volume (Liter)" error={err("volume")}>
             <input
-              className="input"
+              type="number"
               name="volume"
-              type="number"
-              step="0.0001"
-              defaultValue={inputs?.volume ?? ""}
-              onChange={onNumericChange("volume")}
-              readOnly={!canWrite}
-              required
+              className="input-field"
+              value={volume}
+              onChange={(e) => setVolume(e.target.value)}
+              placeholder="contoh: 10000"
+              disabled={!canWrite}
             />
           </Field>
 
-          <Field
-            label="Customer Selling Price (include)"
-            required
-            error={err("harga_jual_include")}
-            hint="Harga customer. Bukan harga vendor dan tidak ikut berubah saat harga vendor berubah."
-          >
+          <Field label="Harga Jual Include (Rp)" error={err("harga_jual_include")}>
             <input
-              className="input"
+              type="number"
               name="harga_jual_include"
-              type="number"
-              step="0.0001"
-              defaultValue={inputs?.harga_jual_include ?? ""}
-              onChange={onNumericChange("harga_jual_include")}
-              readOnly={!canWrite}
-              required
+              className="input-field"
+              value={hargaJualInclude}
+              onChange={(e) => setHargaJualInclude(e.target.value)}
+              placeholder="contoh: 12500"
+              disabled={!canWrite}
             />
           </Field>
 
-          <Field label="Include divisor" error={err("include_divisor")} hint="1.11 / 1.16 / 1.185 sesuai blok Excel.">
+          <Field label="Include Divisor" error={err("include_divisor")}>
             <input
-              className="input"
+              type="number"
+              step="any"
               name="include_divisor"
-              type="number"
-              step="0.000001"
-              defaultValue={inputs?.include_divisor ?? 1.11}
-              onChange={onNumericChange("include_divisor")}
-              readOnly={!canWrite}
+              className="input-field"
+              value={includeDivisor}
+              onChange={(e) => setIncludeDivisor(e.target.value)}
+              placeholder="1.11"
+              disabled={!canWrite}
             />
           </Field>
 
-          <Field label="PPN rate" error={err("ppn_rate")} hint="0.11 = 11%. Blok Non-PPN memakai 0.">
+          <Field label="PPN Rate (%)" error={err("ppn_rate")}>
             <input
-              className="input"
+              type="number"
+              step="any"
               name="ppn_rate"
-              type="number"
-              step="0.0001"
-              defaultValue={inputs?.ppn_rate ?? 0.11}
-              onChange={onNumericChange("ppn_rate", true)}
-              readOnly={!canWrite}
+              className="input-field"
+              value={ppnRate}
+              onChange={(e) => setPpnRate(e.target.value)}
+              placeholder="11"
+              disabled={!canWrite}
             />
           </Field>
 
-          <Field label="PBBKB rate" error={err("pbbkb_rate")}>
+          <Field label="PBBKB Rate (%)" error={err("pbbkb_rate")}>
             <input
-              className="input"
+              type="number"
+              step="any"
               name="pbbkb_rate"
-              type="number"
-              step="0.0001"
-              defaultValue={inputs?.pbbkb_rate ?? ""}
-              onChange={onNumericChange("pbbkb_rate", true)}
-              readOnly={!canWrite}
+              className="input-field"
+              value={pbbkbRate}
+              onChange={(e) => setPbbkbRate(e.target.value)}
+              placeholder="0"
+              disabled={!canWrite}
             />
           </Field>
 
-          <Field label="PPH INU rate" error={err("pph_inu_rate")}>
+          <Field label="Harga Keekonomian (Rp)" error={err("harga_keekonomian")}>
             <input
-              className="input"
-              name="pph_inu_rate"
               type="number"
-              step="0.0001"
-              defaultValue={inputs?.pph_inu_rate ?? ""}
-              readOnly={!canWrite}
-            />
-          </Field>
-
-          <Field label="BPH Migas rate" error={err("bph_migas_rate")}>
-            <input
-              className="input"
-              name="bph_migas_rate"
-              type="number"
-              step="0.0001"
-              defaultValue={inputs?.bph_migas_rate ?? ""}
-              readOnly={!canWrite}
-            />
-          </Field>
-
-          <Field label="Harga keekonomian" error={err("harga_keekonomian")} hint="Untuk F004 (diskon).">
-            <input
-              className="input"
               name="harga_keekonomian"
-              type="number"
-              step="0.0001"
-              defaultValue={inputs?.harga_keekonomian ?? ""}
-              onChange={onNumericChange("harga_keekonomian")}
-              readOnly={!canWrite}
+              className="input-field"
+              value={hargaKeekonomian}
+              onChange={(e) => setHargaKeekonomian(e.target.value)}
+              placeholder="Opsional"
+              disabled={!canWrite}
             />
           </Field>
-
-          <Field label="Marketing">
-            <input className="input" name="marketing" defaultValue={inputs?.marketing ?? ""} readOnly={!canWrite} />
-          </Field>
-          <Field label="Payment term">
-            <input
-              className="input"
-              name="payment_term"
-              defaultValue={inputs?.payment_term ?? ""}
-              readOnly={!canWrite}
-            />
-          </Field>
-          <Field label="Document scheme">
-            <input
-              className="input"
-              name="document_scheme"
-              defaultValue={inputs?.document_scheme ?? ""}
-              readOnly={!canWrite}
-            />
-          </Field>
-          <Field label="Analysis date">
-            <input
-              className="input"
-              name="analysis_date"
-              type="date"
-              defaultValue={inputs?.analysis_date ?? ""}
-              readOnly={!canWrite}
-            />
-          </Field>
-
-          <div className="md:col-span-2 xl:col-span-4">
-            <Field label="Notes">
-              <textarea className="input" name="notes" rows={2} defaultValue={inputs?.notes ?? ""} readOnly={!canWrite} />
-            </Field>
-          </div>
-
-          <div className="md:col-span-2 xl:col-span-4">
-            <Field label="Reason (audit)">
-              <input className="input" name="reason" placeholder="mis. update harga customer periode ini" />
-            </Field>
-          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-ink-200 pt-3">
-          {canWrite ? <SubmitButton label="Save inputs" pendingLabel="Saving…" /> : null}
-          <button type="button" className="btn-secondary" onClick={runPreview} disabled={pending}>
-            {pending ? "Calculating…" : "Hitung ulang (preview)"}
+        <div className="flex flex-wrap items-center gap-2 pt-2">
+          {canWrite && <SubmitButton label="Simpan Parameter AHS" pendingLabel="Menyimpan…" />}
+          <button
+            type="button"
+            onClick={handleRecalc}
+            disabled={isPending}
+            className="btn-secondary"
+          >
+            {isPending ? "Menghitung…" : "Hitung Preview Live"}
           </button>
-          <span className="text-2xs text-ink-500">
-            Preview dihitung di server oleh calculation engine — tidak ada formula di browser dan tidak ada
-            yang tersimpan sampai Anda menekan Simpan.
-          </span>
         </div>
       </form>
 
-      {previewError ? (
-        <div className="px-4 pb-4">
-          <CalculationErrorState
-            message={previewError.error}
-            code={previewError.errorCode}
-            field={Object.keys(previewError.fieldErrors ?? {})[0]}
-          />
-        </div>
-      ) : null}
+      {previewError && (
+        <ErrorState
+          title="Kalkulasi Gagal"
+          message={previewError}
+        />
+      )}
 
-      {preview ? (
-        <div className="border-t border-ink-200 bg-ink-50 px-4 py-3">
-          <div className="mb-2 text-2xs font-semibold uppercase tracking-wide text-ink-500">
-            Preview (unsaved)
+      {preview && (
+        <Card>
+          <CardHeader
+            title="Hasil Live Recalculation AHS"
+            description="Nilai kalkulasi langsung dari engine tanpa mengubah data tersimpan."
+          />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Harga Jual DPP" value={formatRupiah(preview.harga_jual_dpp)} />
+            <StatCard label="Revenue" value={formatRupiah(preview.revenue)} />
+            <StatCard label="Total Cost" value={formatRupiah(preview.total_cost)} />
+            <StatCard label="Cost / Liter" value={formatRupiah(preview.cost_per_liter)} />
+            <StatCard label="Gross Profit" value={formatRupiah(preview.gross_profit)} />
+            <StatCard label="Net Profit" value={formatRupiah(preview.net_profit)} />
+            <StatCard label="Net Profit / Liter" value={formatRupiah(preview.net_profit_per_liter)} />
+            <StatCard label="Profit %" value={formatPercent(preview.profit_percentage)} />
           </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-4">
-            <ReadOnlyValue label="Revenue" value={formatRp(preview.revenue)} />
-            <ReadOnlyValue label="Total Cost" value={formatRp(preview.total_cost)} />
-            <ReadOnlyValue label="Gross Profit" value={formatRp(preview.gross_profit)} />
-            <ReadOnlyValue label="PPN Difference" value={formatRp(preview.ppn_difference)} />
-            <ReadOnlyValue
-              label="Net Profit"
-              value={formatRp(preview.net_profit)}
-              tone={preview.net_profit < 0 ? "negative" : "positive"}
-              emphasis
-            />
-            <ReadOnlyValue label="Net Profit/Liter" value={formatRp(preview.net_profit_per_liter)} emphasis />
-            <ReadOnlyValue
-              label="Profit %"
-              value={`${(preview.profit_percentage * 100).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`}
-              emphasis
-            />
-            <ReadOnlyValue label="Cost per Liter" value={formatRp(preview.cost_per_liter)} />
-          </div>
-        </div>
-      ) : null}
+        </Card>
+      )}
     </div>
   );
 }

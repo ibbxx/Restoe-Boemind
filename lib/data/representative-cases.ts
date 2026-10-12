@@ -8,13 +8,11 @@
  * Case B: 1.185 divisor variant (AHAS Prioritas::BS2)
  * Case C: 1.16 divisor variant (AHAS Prioritas::CU173)
  * Case D: Vendor calculation variant (Eval Vendor TL::G10::Blasdu & Mega Utama)
- * Case E: Scenario with input changes / V1 vs V2 (Eval Vendor TL::I100 vs V100)
  */
 
 import fixtureJson from "../../tests/fixtures/excel-cases.json";
 import { calculateAhs } from "../calculations/ahs";
-import { calculateVendor, calculateVendorAllIn, calculateVendorPpn } from "../calculations/vendor";
-import { compareNumber, type CrossCheckRow, type CrossCheckStatus } from "../calculations/cross-check";
+import { compareNumber, type CrossCheckStatus } from "../calculations/cross-check";
 import type { AhsInput, AhsResult } from "../calculations/types";
 
 export interface RepresentativeCaseSummary {
@@ -42,13 +40,9 @@ export interface RepresentativeCaseSummary {
 }
 
 const allCases = fixtureJson.cases;
-const vendorCases = fixtureJson.vendor_cases;
-
 const rawCaseA = allCases.find((c) => c.id === "Perhitungan INU::M6") || allCases[0]!;
 const rawCaseB = allCases.find((c) => c.id === "AHAS Prioritas::BS2") || allCases[1]!;
 const rawCaseC = allCases.find((c) => c.id === "AHAS Prioritas::CU173") || allCases[2]!;
-const rawCaseE1 = allCases.find((c) => c.id === "Eval Vendor TL::I100") || allCases[3]!;
-const rawCaseE2 = allCases.find((c) => c.id === "Eval Vendor TL::V100") || allCases[4]!;
 
 export const CASE_A: RepresentativeCaseSummary = {
   key: "A",
@@ -145,28 +139,6 @@ export const CASE_D = {
   },
 };
 
-export const CASE_E = {
-  key: "E" as const,
-  title: "Case E — Input Change & Scenario Comparison (V1 vs V2)",
-  category: "Scenario yang memiliki perubahan input",
-  source: "Eval Vendor TL::I100 (V1) & V100 (V2)",
-  excelCaseIdV1: rawCaseE1.id,
-  excelCaseIdV2: rawCaseE2.id,
-  description: "Perbandingan dua blok Excel dari tender yang sama: volume dan harga jual tetap, harga vendor berbeda Rp60/liter.",
-  v1: {
-    volume: rawCaseE1.volume,
-    harga_jual_include: rawCaseE1.harga_jual_include,
-    excel: rawCaseE1.excel,
-    rawCase: rawCaseE1,
-  },
-  v2: {
-    volume: rawCaseE2.volume,
-    harga_jual_include: rawCaseE2.harga_jual_include,
-    excel: rawCaseE2.excel,
-    rawCase: rawCaseE2,
-  },
-};
-
 export const REPRESENTATIVE_CASES = [CASE_A, CASE_B, CASE_C];
 
 export function buildAhsInputFromRaw(raw: (typeof fixtureJson.cases)[0]): AhsInput {
@@ -175,7 +147,6 @@ export function buildAhsInputFromRaw(raw: (typeof fixtureJson.cases)[0]): AhsInp
     B: "T_B_VENDOR_EVAL_PROFAMIR",
     C: "T_C_PROYEKSI_LABA_RUGI",
     D: "T_D_MARKET_CASH",
-    E: "T_E_AHS_PROFIT_SHARE",
   };
 
   return {

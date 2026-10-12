@@ -5,13 +5,11 @@ import { getLocalDatabase } from "./local-db";
 import { createSupabaseServerClient } from "../supabase/server";
 import type { Database } from "./db";
 import { err, type ActionErr } from "../services/result";
-
-import { createRepositories, type Repositories } from "./repositories";
+import { cache } from "react";
 
 export interface RequestContext {
   db: Database;
   actor: Actor;
-  repositories: Repositories;
 }
 
 export type RequestContextResult = RequestContext | ActionErr;
@@ -22,11 +20,11 @@ export type RequestContextResult = RequestContext | ActionErr;
  * In LOCAL_DEMO_MODE, it uses the local persistent database without Supabase.
  * Otherwise, the actor is re-read from Supabase Auth and queries run through PostgREST.
  */
-export async function requestContext(): Promise<RequestContextResult> {
+export const requestContext = cache(async function requestContext(): Promise<RequestContextResult> {
   if (isLocalDemoMode) {
     const actor = (await getActor()) ?? DEMO_ACTOR;
     const db = getLocalDatabase();
-    return { db, actor, repositories: createRepositories(db) };
+    return { db, actor };
   }
 
   if (!supabaseEnv) {
@@ -36,10 +34,11 @@ export async function requestContext(): Promise<RequestContextResult> {
   if (!actor) {
     return err("Sesi Anda sudah berakhir. Silakan login kembali.", { errorCode: "FORBIDDEN" });
   }
+  if (!actor.isActive) return err("Akun Anda belum aktif. Hubungi penanggung jawab aplikasi.", { errorCode: "FORBIDDEN" });
   const client = await createSupabaseServerClient();
   const db = createSupabaseDatabase(client);
-  return { db, actor, repositories: createRepositories(db) };
-}
+  return { db, actor };
+});
 
 export function isContextError(value: RequestContextResult): value is ActionErr {
   return "ok" in value && value.ok === false;

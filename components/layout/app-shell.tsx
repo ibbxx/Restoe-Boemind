@@ -6,15 +6,8 @@ import { Badge } from "@/components/shared/primitives";
 import { SubmitButton } from "@/components/shared/forms";
 import { Brand } from "@/components/shared/brand";
 
-/**
- * Scope aplikasi: Dashboard -> Projects -> Workspace project, with canonical
- * report route available from the shell; vendor input lives in the project
- * workspace and there is no standalone settings screen.
- */
 const NAV_ITEMS: SidebarItem[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/projects", label: "Projects" },
-  { href: "/reports", label: "Reports" },
+  { href: "/projects", label: "Proyek", initial: "P" },
 ];
 
 export function AppShell({ actor, children }: { actor: Actor; children: React.ReactNode }) {

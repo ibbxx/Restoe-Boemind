@@ -17,20 +17,15 @@ export interface ReferenceData {
   products: Product[];
   markets: Market[];
   profiles: Profile[];
-  templates: Array<{ template_id: string; template_name: string; source_block: string }>;
 }
 
 export async function loadReferenceData(db: Database): Promise<ActionResult<ReferenceData>> {
   try {
-    const [customers, products, markets, profiles, templates] = await Promise.all([
+    const [customers, products, markets, profiles] = await Promise.all([
       db.select<Customer>("customers", { order: [{ column: "name", ascending: true }] }),
       db.select<Product>("products", { order: [{ column: "code", ascending: true }] }),
       db.select<Market>("markets", { order: [{ column: "name", ascending: true }] }),
       db.select<Profile>("profiles", { order: [{ column: "full_name", ascending: true }] }),
-      db.select<{ template_id: string; template_name: string; source_block: string }>(
-        "calculation_templates",
-        { where: [eq("active", true)], order: [{ column: "template_id", ascending: true }] },
-      ),
     ]);
 
     return ok({
@@ -38,7 +33,6 @@ export async function loadReferenceData(db: Database): Promise<ActionResult<Refe
       products: products.rows,
       markets: markets.rows,
       profiles: profiles.rows,
-      templates: templates.rows,
     });
   } catch (e) {
     return toActionResultError(e, "customers");
@@ -159,7 +153,7 @@ export async function resolveProjectReferences(
   const canCreateMaster = actor ? can("write_master_data", actor.role) : false;
 
   if (want.customer) {
-    const match = matchExactTerm(want.customer, customers.rows.map((c) => ({ id: c.id, labels: [c.name] })), "Customer");
+    const match = matchExactTerm(want.customer, customers.rows.map((c) => ({ id: c.id, labels: [c.name] })), "Pelanggan");
     if (canCreateMaster && !match.id) {
       const created = await db.insert<{ id: string }>("customers", { name: want.customer });
       ids.customer_id = created.id;
@@ -169,7 +163,7 @@ export async function resolveProjectReferences(
   }
 
   if (want.product) {
-    const match = matchExactTerm(want.product, products.rows.map((p) => ({ id: p.id, labels: [`${p.code} — ${p.name}`, p.code, p.name] })), "Product");
+    const match = matchExactTerm(want.product, products.rows.map((p) => ({ id: p.id, labels: [`${p.code} — ${p.name}`, p.code, p.name] })), "Produk");
     if (canCreateMaster && !match.id) {
       const [rawCode, ...nameParts] = want.product.split("—").map((part) => part.trim());
       const name = nameParts.join(" — ").trim() || want.product;
@@ -184,7 +178,7 @@ export async function resolveProjectReferences(
   }
 
   if (want.market) {
-    const match = matchExactTerm(want.market, markets.rows.map((m) => ({ id: m.id, labels: [m.name] })), "Market");
+    const match = matchExactTerm(want.market, markets.rows.map((m) => ({ id: m.id, labels: [m.name] })), "Lokasi / Pasar");
     if (canCreateMaster && !match.id) {
       const created = await db.insert<{ id: string }>("markets", { name: want.market });
       ids.market_id = created.id;

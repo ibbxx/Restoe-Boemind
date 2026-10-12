@@ -1,5 +1,7 @@
 # Local MVP Report — Phase 3.5
 
+> Catatan historis: alur, perintah seed, dan penyimpanan JSON di bawah bukan konfigurasi terkini. Gunakan [arsitektur lokal saat ini](LOCAL_ARCHITECTURE.md); jangan menjalankan perintah reset pada data tim.
+
 ## Status
 
 Local MVP berjalan tanpa Supabase secara default ketika environment Supabase tidak tersedia. `requestContext()` memilih persistent local database, actor lokal, repository port yang sama, service layer, Formula Registry, dan Calculation Engine yang digunakan aplikasi.

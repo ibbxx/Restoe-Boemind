@@ -3,11 +3,10 @@ import { fileURLToPath } from "node:url";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  experimental: { serverActions: { bodySizeLimit: "6mb" } },
+  outputFileTracingIncludes: { "/*": ["./lib/data/*.mjs", "./lib/workbook/*.mjs"] },
   outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
-  // The calculation engine (lib/calculations) is the ONLY place business
-  // arithmetic runs. It is imported by server actions and server components
-  // only; nothing here moves a formula into the browser bundle.
-  serverExternalPackages: [],
 };
 
 export default nextConfig;

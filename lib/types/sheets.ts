@@ -9,7 +9,7 @@
  * (a formula such as `harga_dasar_harga_inu * ppn_rate`). Expressions are
  * evaluated server-side by `lib/services/sheets.ts` through the same safe
  * evaluator the Calculation Engine uses — the engine itself is untouched and
- * `AhsResult` stays the source of truth for the commercial numbers.
+ * `AhsResult` stays the source of truth for the calculated numbers.
  */
 
 export interface SheetColumn {
@@ -117,6 +117,15 @@ export interface ProjectSheetsDoc {
   workbookFormulas?: Record<string, WorkbookFormulaEntry>;
   /** Introduced in v4: one persisted coordinate system for the whole project. */
   workbook?: WorkbookGridDoc;
+  /** Snapshot Univer Sheets. Master template is cloned per project. */
+  univerWorkbook?: Record<string, unknown>;
+  businessProjection?: {
+    values: Record<string, string | number | null>;
+    errors: string[];
+    calculatedAt: string;
+  };
+  lastMutationId?: string;
+  revision?: number;
 }
 
 export interface WorkbookFormulaEntry {
@@ -135,6 +144,7 @@ export interface ProjectSheetRow {
   doc: ProjectSheetsDoc;
   created_at: string;
   updated_at: string;
+  revision?: number;
 }
 
 /** Computed cell sent to the UI: the value is ALWAYS computed on the server. */

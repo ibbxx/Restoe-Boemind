@@ -13,8 +13,8 @@ export function ProjectDeleteButton({ projectId, projectName }: { projectId: str
       variant="danger"
       label="Hapus"
       pendingLabel="Menghapus…"
-      confirmTitle={`Hapus project "${projectName}"?`}
-      confirmMessage="The project and its vendor, AHS, scenario, and history data will be deleted. This cannot be undone."
+      confirmTitle={`Hapus proyek "${projectName}"?`}
+      confirmMessage="Proyek beserta data pemasok dan lembar kerjanya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan."
       action={() => deleteProjectAction(projectId)}
       onDone={(result) => {
         if (result.ok) router.refresh();

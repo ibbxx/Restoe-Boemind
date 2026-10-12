@@ -23,7 +23,7 @@ export interface ActionErr {
   /** Field -> message, for inline validation display. */
   fieldErrors?: Record<string, string>;
   /** Engine error code when the failure came from the calculation engine. */
-  errorCode?: ErrorCode | "FORBIDDEN" | "NOT_FOUND" | "DATABASE_ERROR" | "INVALID_INPUT";
+  errorCode?: ErrorCode | "FORBIDDEN" | "NOT_FOUND" | "DATABASE_ERROR" | "INVALID_INPUT" | "CONFLICT" | "INCOMPLETE";
   /** Non-fatal notes, e.g. an audit entry that could not be written. */
   warnings?: string[];
 }
@@ -59,7 +59,7 @@ export function fromCalcFailure(failure: CalcFailure): ActionErr {
 
 export function forbidden(what: string): ActionErr {
   return err(
-    `Role Anda tidak memiliki izin untuk ${what}. Database menolak operasi ini (RLS).`,
+    `Anda tidak memiliki izin untuk ${what}.`,
     { errorCode: "FORBIDDEN" },
   );
 }
@@ -71,7 +71,8 @@ export function notFound(what: string): ActionErr {
 }
 
 export function databaseError(table: string, detail: string): ActionErr {
-  return err(`Permintaan database gagal pada "${table}": ${detail}`, {
+  console.error(`[database-error] ${table}`, detail);
+  return err("Perubahan belum tersimpan. Coba lagi atau hubungi penanggung jawab aplikasi.", {
     errorCode: "DATABASE_ERROR",
   });
 }
@@ -82,7 +83,7 @@ export function toActionResultError(e: unknown, table: string): ActionErr {
     return databaseError(table, "Operasi tidak dapat diselesaikan. Coba lagi atau hubungi administrator.");
   }
   if (e instanceof Error) {
-    return err(`Operasi gagal pada "${table}". Coba lagi atau hubungi administrator.`, { errorCode: "DATABASE_ERROR" });
+    return databaseError(table, e.message);
   }
-  return err(`Operasi gagal pada "${table}". Coba lagi atau hubungi administrator.`, { errorCode: "DATABASE_ERROR" });
+  return databaseError(table, String(e));
 }

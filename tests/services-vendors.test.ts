@@ -44,7 +44,7 @@ describe("Vendor master", () => {
 });
 
 describe("Assign vendor to project", () => {
-  it("adds the vendor and records history", async () => {
+  it("adds the vendor to a project", async () => {
     const db = makeDb(seedBase());
     const result = await addVendorToProject(db, PROC, UUIDS.projectA, UUIDS.vendor1, "armada siap");
     expect(result.ok).toBe(true);

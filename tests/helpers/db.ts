@@ -3,7 +3,7 @@
  *
  * The services are exercised through the REAL Database port implemented by
  * lib/data/memory-db.ts, so every test runs the production code path (filters,
- * pagination, joins, engine wiring, history) without a hosted Supabase.
+ * pagination, joins, and engine wiring) without a hosted Supabase.
  *
  * The memory adapter runs AFTER the RLS gate. Permission tests therefore assert
  * the application-level guards that mirror RLS (lib/auth/permissions.ts), and
@@ -32,7 +32,7 @@ export function actor(role: Actor["role"], id = `user-${role.toLowerCase()}`): A
 
 export function makeDb(seed: Partial<Record<TableName, Row[]>> = {}): Database {
   resetMemoryIds();
-  return createMemoryDatabase({ seed });
+  return createMemoryDatabase({ seed: { profiles: seedBase().profiles, ...seed } });
 }
 
 export const UUIDS = {
@@ -223,7 +223,6 @@ export function seedAhs(
     for (const [index, line] of costLines.entries()) {
       await db.insert("ahs_cost_items", {
         ahs_id: ahsId,
-        scenario_id: null,
         line_no: index + 1,
         category: line.category,
         description: line.description,

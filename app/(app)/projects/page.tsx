@@ -6,9 +6,11 @@ import { listProjects, parseProjectStatus } from "@/lib/services/projects";
 import { normalisePage } from "@/lib/services/pagination";
 import { formatNumber } from "@/lib/format";
 import { Pagination } from "@/components/shared/data-table";
-import { Card, CardHeader, PageHeader } from "@/components/shared/primitives";
+import { PageHeader } from "@/components/shared/primitives";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { ProjectFilterBar, ProjectTable } from "@/components/project/project-table";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +30,8 @@ export default async function ProjectsPage({
   if (isContextError(ctx)) {
     return (
       <>
-        <PageHeader title="Projects" />
-        <ErrorState title="Projects tidak dapat dimuat" message={ctx.error} code={ctx.errorCode} />
+        <PageHeader title="Proyek" />
+        <ErrorState title="proyek tidak dapat dimuat" message={ctx.error} code={ctx.errorCode} />
       </>
     );
   }
@@ -51,79 +53,80 @@ export default async function ProjectsPage({
   if (!result.ok) {
     return (
       <>
-        <PageHeader title="Projects" />
-        <ErrorState title="Projects tidak dapat dimuat" message={result.error} code={result.errorCode} />
+        <PageHeader title="Proyek" />
+        <ErrorState title="proyek tidak dapat dimuat" message={result.error} code={result.errorCode} />
       </>
     );
   }
 
   const data = result.data;
   const hasFilters = search !== "" || status !== "";
+  const canCreate = can("create_project", ctx.actor.role);
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-[1480px]">
       <PageHeader
-        title="Projects"
-        actions={
-          <>
-            <Link href="/reports" className="btn-secondary">
-              Reports
-            </Link>
-            <Link href="/projects/new" className="btn-primary">
-              New project
-            </Link>
-          </>
-        }
+        title="Proyek"
+        actions={canCreate ? (
+          <Link href="/projects/new" className={buttonVariants({ className: "projects-create-button" })}>
+            Buat proyek
+          </Link>
+        ) : undefined}
       />
 
-      <Card>
-        <CardHeader
-          title={`Projects (${formatNumber(data.total)})`}
-        />
+      <Card className="projects-card">
+        <CardHeader>
+          <CardTitle>Daftar proyek</CardTitle>
+          <CardDescription>
+            {formatNumber(data.total)} proyek{hasFilters ? " sesuai filter" : " terdaftar"}
+          </CardDescription>
+        </CardHeader>
         <ProjectFilterBar
           search={search}
           status={status}
+          hasFilters={hasFilters}
         />
 
         {data.total === 0 ? (
           hasFilters ? (
-            <div className="p-4">
+            <div className="p-4 sm:p-6">
               <EmptyState
                 compact
-                title="No matching projects"
+                title="Tidak ada proyek yang cocok"
+                description="Coba ubah kata kunci atau status yang dipilih."
+                showDescription
                 action={
-                  <Link href="/projects" className="btn-secondary">
-                    Reset
+                  <Link href="/projects" className={buttonVariants({ variant: "outline" })}>
+                    Hapus filter
                   </Link>
                 }
               />
             </div>
           ) : (
-            <div className="p-4">
+            <div className="p-4 sm:p-6">
               <EmptyState
-                title="No projects yet"
-                action={
-                  <Link href="/projects/new" className="btn-primary">
-                    Create project
-                  </Link>
-                }
+                title="Belum ada proyek"
+                description="Proyek yang dibuat akan tampil di daftar ini."
+                showDescription
+                action={canCreate ? <Link href="/projects/new" className={buttonVariants()}>Buat proyek</Link> : undefined}
               />
             </div>
           )
         ) : (
           <>
             <ProjectTable rows={data.rows} canDelete={can("delete_project", ctx.actor.role)} />
-            <Pagination
-              page={data}
-              basePath="/projects"
-              params={{
-                q: search,
-                status,
-              }}
-            />
+            {data.totalPages > 1 ? (
+              <div className="projects-pagination">
+                <Pagination
+                  page={data}
+                  basePath="/projects"
+                  params={{ q: search, status }}
+                />
+              </div>
+            ) : null}
           </>
         )}
       </Card>
-    </>
+    </div>
   );
 }

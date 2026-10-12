@@ -10,6 +10,14 @@ import { fileURLToPath } from "node:url";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const command = process.argv[2] ?? "dev";
 const nextArgs = process.argv.slice(3);
+if (command === "dev" || command === "start") {
+  const host = nextArgs.findIndex((arg) => arg === "--hostname" || arg === "-H");
+  if (host >= 0 && !["127.0.0.1", "localhost", "::1"].includes(nextArgs[host + 1])) {
+    throw new Error("Aplikasi lokal hanya dapat dibuka dari komputer ini.");
+  }
+  if (nextArgs.some((arg) => arg.startsWith("--hostname="))) throw new Error("Gunakan --hostname localhost.");
+  if (host < 0) nextArgs.push("--hostname", "127.0.0.1");
+}
 const defaultPort = Number(process.env.PORT ?? 3000);
 const lockPath = resolve(root, ".next-safe.lock");
 
@@ -84,7 +92,11 @@ if (!["dev", "build", "start"].includes(command)) {
 
 const port = readPort(nextArgs);
 await acquireLock();
-for (const checkedPort of [...new Set(command === "build" ? [3000, port] : [port])]) {
+// Every command in this repository writes to the same `.next` directory.
+// Always check the conventional dev port as well as an explicitly requested
+// port, otherwise `npm run dev -- --port 3100` could delete chunks underneath
+// a still-running server on port 3000.
+for (const checkedPort of [...new Set([3000, port])]) {
   await assertPortFree(checkedPort);
 }
 

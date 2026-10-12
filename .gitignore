@@ -1,8 +1,13 @@
 .next/
+.next-*
 .next-safe.lock
 node_modules/
-.data/local-store.json
+.data/
+*.sqlite*
 .env
 .env.local
 .DS_Store
 *.tsbuildinfo
+.vscode/
+.claude/
+.kiro/

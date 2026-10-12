@@ -30,10 +30,6 @@ export type TableName =
   | "ahs_cost_items"
   | "calculation_templates"
   | "formula_registry"
-  | "price_scenarios"
-  | "scenario_inputs"
-  | "calculation_results"
-  | "project_history"
   | "project_sheets";
 
 export type FilterOp =
@@ -78,6 +74,11 @@ export interface QueryResult<T> {
 }
 
 export interface Database {
+  /** Atomic unit of work. Local adapters roll back thrown errors. */
+  transaction?<T>(work: (tx: Database) => Promise<T>): Promise<T>;
+  backup?(reason?: string): Promise<string>;
+  close?(): Promise<void>;
+  readonly local?: boolean;
   select<T = Record<string, unknown>>(
     table: TableName,
     options?: SelectOptions,
@@ -94,6 +95,27 @@ export interface Database {
   remove(table: TableName, id: string): Promise<void>;
   /** True when the adapter is connected to a real database. */
   readonly live: boolean;
+}
+
+export class TransactionAborted extends Error {
+  constructor(readonly result: unknown) { super("Transaction aborted"); }
+}
+
+/** A failed ActionResult must roll back just like a thrown exception. */
+export async function atomic<T>(db: Database, work: (tx: Database) => Promise<T>): Promise<T> {
+  if (!db.transaction) return work(db);
+  try {
+    return await db.transaction(async (tx) => {
+      const result = await work(tx);
+      if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+        throw new TransactionAborted(result);
+      }
+      return result;
+    });
+  } catch (error) {
+    if (error instanceof TransactionAborted) return error.result as T;
+    throw error;
+  }
 }
 
 export class DatabaseError extends Error {

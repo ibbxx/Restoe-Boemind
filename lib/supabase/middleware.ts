@@ -20,7 +20,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     const { pathname } = request.nextUrl;
     if (pathname === "/login") {
       const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      url.pathname = "/projects";
       url.search = "";
       return NextResponse.redirect(url);
     }
@@ -68,7 +68,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/projects";
     url.search = "";
     return NextResponse.redirect(url);
   }

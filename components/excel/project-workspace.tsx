@@ -1,29 +1,19 @@
-/**
- * PROJECT WORKSPACE = SATU LEMBAR KERJA EXCEL.
- *
- * Kiri  (5/12): EVALUASI HARGA VENDOR (kolom vendor dinamis, sel harga bisa
- *               diedit).
- * Kanan (7/12): ANALISIS HARGA SATUAN (AHS) — header blok, rincian harga jual,
- *               blok biaya per kategori, dan laba.
- *
- * Desktop: dua kolom seperti screenshot workbook. Tablet: tiap blok bisa di-scroll
- * horizontal. Mobile: blok bertumpuk (vendor → AHS).
- */
+/** Editable Univer spreadsheet for one project. */
 
-import type { ProjectWorkspaceView } from "@/lib/services/workspace";
-import { WorkbookFrame } from "@/components/excel/workbook-frame";
-import { GlobalWorkbookGrid } from "@/components/excel/global-workbook-grid";
+import { UniverWorkbookLoader } from "@/components/excel/univer-workbook-loader";
 
 export function ProjectWorkspace({
   projectId,
   view,
 }: {
   projectId: string;
-  view: ProjectWorkspaceView;
+  view: { univerWorkbook: Record<string, unknown>; canWrite: boolean; revision?: number; needsMapping?: boolean };
 }) {
-  return (
-    <WorkbookFrame projectId={projectId} layout={view.workbook} document={view.workbookDoc} canWrite={view.canWrite}>
-      <GlobalWorkbookGrid projectId={projectId} layout={view.workbook} document={view.workbookDoc} canWrite={view.canWrite} />
-    </WorkbookFrame>
-  );
+  return <UniverWorkbookLoader
+    projectId={projectId}
+    snapshot={view.univerWorkbook}
+    canWrite={view.canWrite}
+    revision={view.revision}
+    needsMapping={view.needsMapping}
+  />;
 }

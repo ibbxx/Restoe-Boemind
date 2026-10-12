@@ -6,5 +6,5 @@ export const dynamic = "force-dynamic";
 
 export default async function RootPage() {
   const actor = await getActor();
-  redirect(actor ? "/dashboard" : "/login");
+  redirect(actor ? "/projects" : "/login");
 }

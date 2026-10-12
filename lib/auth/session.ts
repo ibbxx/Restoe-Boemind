@@ -22,7 +22,7 @@ export interface Actor {
 export const DEMO_ACTOR: Actor = {
   id: "00000000-0000-4000-8000-000000000002",
   email: "procurement@demo.local",
-  full_name: "Procurement Lead (Demo Mode)",
+  full_name: "Tim Procurement",
   role: "ADMIN",
   profileMissing: false,
   isActive: true,

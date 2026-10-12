@@ -42,7 +42,7 @@ export async function loginAction(_prev: LoginState | null, formData: FormData):
     return { ok: false, error: "Email atau password salah, atau akun belum aktif." };
   }
 
-  redirect(next && next.startsWith("/") ? next : "/dashboard");
+  redirect(next && next.startsWith("/") ? next : "/projects");
 }
 
 export async function logoutAction(): Promise<void> {

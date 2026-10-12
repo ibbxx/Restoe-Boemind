@@ -42,7 +42,7 @@ function templateWants(t: CalculationTemplate, step: string): boolean {
 }
 
 /**
- * Full AHS calculation for one block/scenario.
+ * Full AHS calculation for one workbook block.
  * Returns a structured Result — never throws, never yields NaN/Infinity/undefined.
  */
 export function calculateAhs(input: AhsInput): Result<AhsResult> {

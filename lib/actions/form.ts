@@ -27,14 +27,18 @@ export function formId(formData: FormData, key: string): string | null {
 
 /** Empty string => null (NOT APPLICABLE), invalid text => NaN marker. */
 export function formNumber(formData: FormData, key: string): number | null {
-  return parseNumericInput(formText(formData, key));
+  const raw = formText(formData, key);
+  if (!raw) return null;
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw)) return Number.NaN;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : Number.NaN;
 }
 
 /** Rate fields where an empty box must fall back to the Excel default. */
 export function formRate(formData: FormData, key: string, fallback: number | null): number | null {
   const raw = formText(formData, key);
   if (raw === "") return fallback;
-  const parsed = parseNumericInput(raw);
+  const parsed = formNumber(formData, key);
   if (parsed === null) return Number.NaN;
   // Accept both "11" (percent) and "0.11" (ratio) for tax rates.
   return Math.abs(parsed) > 1 ? parsed / 100 : parsed;
@@ -54,7 +58,7 @@ export function formNumberList(formData: FormData, key: string): number[] {
     .filter((v): v is number => v !== null);
 }
 
-/** `cost_rate_<index>` pairs posted from the scenario form. */
+/** `cost_rate_<index>` pairs posted from the cost editor. */
 export function formIndexedNumbers(
   formData: FormData,
   prefix: string,

@@ -11,7 +11,7 @@
  *
  * WHAT THIS IS NOT
  *   It is NOT a second calculation engine and it does NOT touch the existing
- *   one. `lib/calculations/**` is unchanged; the commercial numbers of the AHS
+ *   one. `lib/calculations/**` is unchanged; the calculated numbers of the AHS
  *   block still come from `calculateAhs()`. This module only evaluates the
  *   cells the USER wrote, through the same safe evaluator the engine uses
  *   (`lib/calculations/expression.ts` — no eval, no property access), and it
@@ -31,8 +31,9 @@
 import { canWriteProject, type ProjectAccess } from "../auth/permissions";
 import type { Actor } from "../auth/session";
 import { evaluateExpression, type Scope } from "../calculations/expression";
-import type { AhsResult } from "../calculations/types";
-import { eq, type Database } from "../data/db";
+import { atomic, eq, type Database } from "../data/db";
+import { initializeBindings, bindings, writeBoundValue } from "../workbook/bindings";
+import { calculateWorkbook } from "../workbook/calculation";
 import { parseNumericInput } from "../format";
 import { boundsRange, contains, intersects, rangeBounds } from "../sheet-ranges";
 import type { SheetRange, SheetFill } from "../types/sheets";
@@ -65,17 +66,51 @@ import {
   workbookStyleKey,
 } from "../workbook/document";
 import { isActionErr, loadProjectContext } from "./access";
-import { getAhsBundle, type AhsInputsView, type CostItemView } from "./ahs";
-import { recordHistory } from "./history";
-import { ok, toActionResultError, type ActionResult } from "./result";
+import blankTemplate from "../workbook/templates/project-blank.json";
+import ahsTemplate from "../workbook/templates/ahs-standard-v1.json";
+import { ok, err, toActionResultError, type ActionResult } from "./result";
 import { listProjectVendors, type ProjectVendorView } from "./vendors";
 
 export const SHEET_FORMULA_HELP =
-  "Sel formula: angka biasa (mis. 500) atau formula (mis. harga_dasar_harga_inu * ppn_rate). " +
-  "Semua nilai dihitung di server — tidak ada formula yang berjalan di browser.";
+  "Isi angka atau rumus pada sel yang tersedia. Hasil diperbarui setelah perubahan disimpan.";
 
 /** Guard panjang ekspresi supaya dokumen tidak dipakai sebagai tempat sampah. */
 const MAX_EXPR_LENGTH = 240;
+
+/** Minimum visible canvas size for the editable Univer workbook. */
+export const MIN_UNIVER_ROW_COUNT = 200;
+export const MIN_UNIVER_COLUMN_COUNT = 50;
+
+type UniverSnapshotSheet = {
+  rowCount?: unknown;
+  columnCount?: unknown;
+  [key: string]: unknown;
+};
+
+/**
+ * Expand persisted Univer snapshots without rewriting their content.
+ * Univer keeps cellData, merges, styles and formulas sparse, so increasing
+ * the axis counts does not add any data to the snapshot.
+ */
+export function normalizeUniverWorkbookSnapshot(raw: unknown): Record<string, unknown> {
+  const snapshot = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? structuredClone(raw as Record<string, unknown>)
+    : structuredClone(blankTemplate) as unknown as Record<string, unknown>;
+  const sheets = snapshot.sheets;
+  if (!sheets || typeof sheets !== "object" || Array.isArray(sheets)) return snapshot;
+
+  for (const sheet of Object.values(sheets as Record<string, unknown>)) {
+    if (!sheet || typeof sheet !== "object" || Array.isArray(sheet)) continue;
+    const target = sheet as UniverSnapshotSheet;
+    const rowCount = typeof target.rowCount === "number" && Number.isFinite(target.rowCount)
+      ? Math.floor(target.rowCount) : 0;
+    const columnCount = typeof target.columnCount === "number" && Number.isFinite(target.columnCount)
+      ? Math.floor(target.columnCount) : 0;
+    target.rowCount = Math.max(MIN_UNIVER_ROW_COUNT, rowCount);
+    target.columnCount = Math.max(MIN_UNIVER_COLUMN_COUNT, columnCount);
+  }
+  return snapshot;
+}
 
 // ------------------------------------------------------------- identifiers
 
@@ -109,151 +144,17 @@ function newId(prefix: string): string {
 // ------------------------------------------------------------ default rows
 
 /** Baris awal (semua bisa diubah/dihapus procurement). */
-function defaultSheets(): SheetDef[] {
-  const hargaJual: SheetDef = {
-    key: "harga_jual",
-    title: "RINCIAN HARGA JUAL (PER LITER)",
-    columns: [
-      { key: "rate", label: "Rate" },
-      { key: "qty", label: "Qty" },
-      { key: "total", label: "Total" },
-    ],
-    rows: [
-      {
-        id: "harga_jual-harga-dasar",
-        label: "Harga Dasar",
-        cells: {
-          rate: { value: null, expr: "harga_jual_dpp" },
-          qty: { value: null, expr: "volume" },
-          total: { value: null, expr: "harga_dasar_rate * harga_dasar_qty" },
-        },
-      },
-      {
-        id: "harga_jual-pbbkb",
-        label: "PBBKB",
-        cells: {
-          rate: { value: null, expr: "pbbkb_output / volume" },
-          qty: { value: null, expr: "volume" },
-          total: { value: null, expr: "pbbkb_output" },
-        },
-      },
-      {
-        id: "harga_jual-ppn",
-        label: "PPN 11%",
-        cells: {
-          rate: { value: null, expr: "ppn_output / volume" },
-          qty: { value: null, expr: "volume" },
-          total: { value: null, expr: "ppn_output" },
-        },
-      },
-    ],
-  };
-
-  const konversi: SheetDef = {
-    key: "konversi",
-    title: "KONVERSI SATUAN JAGAD",
-    columns: [
-      { key: "harga_inu", label: "Harga INU" },
-      { key: "biaya", label: "Biaya" },
-    ],
-    rows: [
-      {
-        id: "konversi-harga-dasar",
-        label: "Harga Dasar",
-        cells: {
-          harga_inu: { value: null, expr: "vendor_harga_dasar" },
-          biaya: { value: null, expr: "cost_harga_dasar_rate" },
-        },
-      },
-      {
-        id: "konversi-ppn",
-        label: "PPN",
-        cells: {
-          harga_inu: { value: null, expr: "harga_dasar_harga_inu * ppn_rate" },
-          biaya: { value: null, expr: "cost_ppn_11_rate" },
-        },
-      },
-      {
-        id: "konversi-pbbkb",
-        label: "PBBKB",
-        cells: { harga_inu: { value: null, expr: "vendor_pbbkb" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-pph",
-        label: "PPH",
-        cells: { harga_inu: { value: null, expr: "vendor_pph" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-oat",
-        label: "OAT",
-        cells: { harga_inu: { value: null, expr: "vendor_oat" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-bph",
-        label: "BPH",
-        cells: { harga_inu: { value: null, expr: "vendor_bph" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-all-in",
-        label: "ALL IN",
-        cells: {
-          harga_inu: {
-            value: null,
-            expr: "sum(harga_dasar_harga_inu, ppn_harga_inu, pbbkb_harga_inu, pph_harga_inu, oat_harga_inu, bph_harga_inu)",
-          },
-          biaya: { value: null, expr: "vendor_all_in" },
-        },
-      },
-      { id: "konversi-fee-jne", label: "FEE JNE", cells: { harga_inu: { value: 500, expr: null }, biaya: { value: null, expr: null } } },
-      {
-        id: "konversi-selisih-ppn",
-        label: "SELISIH PPN",
-        cells: { harga_inu: { value: null, expr: "ppn_biaya - ppn_harga_inu" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-bph-migas",
-        label: "BPH MIGAS",
-        cells: { harga_inu: { value: null, expr: "0.25% * harga_dasar_biaya" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-cost",
-        label: "COST",
-        cells: {
-          harga_inu: { value: null, expr: "selisih_ppn_harga_inu + bph_migas_harga_inu" },
-          biaya: { value: null, expr: null },
-        },
-      },
-      {
-        id: "konversi-cost-jne",
-        label: "COST JNE",
-        cells: { harga_inu: { value: null, expr: "cost_harga_inu" }, biaya: { value: null, expr: null } },
-      },
-      {
-        id: "konversi-fee-cost",
-        label: "FEE + COST",
-        cells: {
-          harga_inu: { value: null, expr: "fee_jne_harga_inu + cost_jne_harga_inu" },
-          biaya: { value: null, expr: "all_in_biaya - all_in_harga_inu" },
-        },
-      },
-      { id: "konversi-cross-check", label: "Cross Check", cells: {} },
-    ],
-  };
-
-  return [hargaJual, konversi, resultPointsSheet()];
-}
-
 function resultPointsSheet(): SheetDef {
   return { key: "poin_perhitungan", title: "POIN PERHITUNGAN TAMBAHAN",
     columns: [{ key: "nilai", label: "Nilai / hasil" }], rows: [], merges: [], styles: {} };
 }
 
 const STANDARD_WORKBOOK_LABELS: Array<[number, number, string]> = [
-  [0, 0, "EVALUASI HARGA VENDOR"], [0, 4, "PROYEKSI LABA RUGI"],
-  [1, 0, "Pekerjaan / Material"], [2, 0, "Customer"], [3, 0, "Lokasi"], [4, 0, "Periode"],
+  [0, 0, "EVALUASI HARGA PEMASOK"], [0, 4, "PROYEKSI LABA RUGI"],
+  [1, 0, "Pekerjaan / Material"], [2, 0, "Pelanggan"], [3, 0, "Lokasi"], [4, 0, "Periode"],
   [5, 0, "Uraian"], [6, 0, "Harga Dasar"], [7, 0, "PPN"], [8, 0, "PBBKB"],
   [9, 0, "PPH"], [10, 0, "OAT"], [11, 0, "PPN OAT"], [12, 0, "BPH"], [13, 0, "TOTAL"],
-  [1, 4, "Tgl Analisis (RnD)"], [2, 4, "Marketing"], [3, 4, "Pembayaran"],
+  [1, 4, "Tanggal analisis"], [2, 4, "Marketing"], [3, 4, "Pembayaran"],
   [4, 4, "Harga Keekonomian"], [5, 4, "HARGA INCLUDE"], [5, 6, "VOLUME"], [5, 8, "DIVISOR"],
   [6, 4, "TOTAL PENDAPATAN"], [7, 4, "HARGA JUAL SETELAH PAJAK"],
   [10, 4, "HARGA JUAL"], [19, 4, "TOTAL BIAYA"], [20, 4, "BIAYA PER LITER"],
@@ -273,23 +174,34 @@ function seedStandardWorkbookLabels(workbook: ReturnType<typeof defaultWorkbookG
 }
 
 export function defaultSheetsDoc(): ProjectSheetsDoc {
-  const workbook = seedStandardWorkbookLabels(defaultWorkbookGrid());
-  return { version: 5, sheets: defaultSheets(), workbookFormulas: {}, workbook };
+  const univerWorkbook = normalizeUniverWorkbookSnapshot(ahsTemplate);
+  initializeBindings(univerWorkbook);
+  return { version: 5, sheets: [
+    { key: "lembar_kerja", title: "Lembar kerja", columns: [{ key: "nilai", label: "Nilai" }], rows: [], merges: [], styles: {} },
+  ], workbookFormulas: {}, workbook: defaultWorkbookGrid(), univerWorkbook };
 }
 
 export function createProjectSheetsTemplate(input: {
   code: string; name: string; location?: string | null; periodLabel?: string | null; volume?: number | null;
 }): ProjectSheetsDoc {
   const doc = defaultSheetsDoc();
-  const grid = doc.workbook!;
-  const set = (row: number, column: number, raw: string) => {
-    const rowId = grid.rows[row]!.id; const columnId = grid.columns[column]!.id;
-    grid.cells[workbookStyleKey(rowId, columnId)] = { role: "label", raw };
-  };
-  set(1, 1, input.name || input.code);
-  set(3, 1, input.location ?? "");
-  set(4, 1, input.periodLabel ?? "");
-  if (input.volume !== null && input.volume !== undefined) set(5, 7, String(input.volume));
+  const snapshot = doc.univerWorkbook!;
+  snapshot.id = `project-${input.code}`;
+  snapshot.name = input.name || input.code;
+  writeBoundValue(snapshot, "project.name", input.name || input.code);
+  writeBoundValue(snapshot, "project.location", input.location ?? null);
+  writeBoundValue(snapshot, "project.period_label", input.periodLabel ?? null);
+  writeBoundValue(snapshot, "project.volume", input.volume ?? null);
+
+  // Auto-fill AHS header from project data
+  writeBoundValue(snapshot, "ahs.pekerjaan", input.name || input.code);
+  writeBoundValue(snapshot, "ahs.lokasi", input.location ?? null);
+  writeBoundValue(snapshot, "ahs.lokasi_ahs", input.location ?? null);
+  writeBoundValue(snapshot, "ahs.volume", input.volume ?? null);
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  writeBoundValue(snapshot, "ahs.tgl_analisis", formattedDate);
+  writeBoundValue(snapshot, "ahs.analysis_date", formattedDate);
   return doc;
 }
 
@@ -302,17 +214,28 @@ export function parseSheetsDoc(raw: unknown): ProjectSheetsDoc {
     try {
       value = JSON.parse(raw);
     } catch {
-      return defaultSheetsDoc();
+      throw new Error("Lembar kerja tidak dapat dibaca. Gunakan cadangan untuk memulihkan data.");
     }
   }
-  if (!value || typeof value !== "object") return defaultSheetsDoc();
+  if (!value || typeof value !== "object") throw new Error("Lembar kerja tidak dapat dibaca.");
   const doc = value as Partial<ProjectSheetsDoc>;
-  if (!Array.isArray(doc.sheets) || doc.sheets.length === 0) return defaultSheetsDoc();
+  if (!Array.isArray(doc.sheets) || doc.sheets.length === 0) throw new Error("Lembar kerja tidak lengkap.");
+  if (doc.univerWorkbook != null) {
+    const workbook = doc.univerWorkbook as Record<string, unknown>;
+    if (typeof workbook !== "object" || Array.isArray(workbook) || !workbook.sheets || typeof workbook.sheets !== "object" || Array.isArray(workbook.sheets) || !Object.keys(workbook.sheets).length) {
+      throw new Error("Lembar kerja tidak dapat dibaca. Gunakan cadangan untuk memulihkan data.");
+    }
+  }
   const sheets = structuredClone(doc.sheets as SheetDef[]);
   if (!sheets.some(sheet => sheet.key === "poin_perhitungan")) sheets.push(resultPointsSheet());
   return { version: 5, sheets: sheets.map(sheet => ({
     ...sheet, merges: sheet.merges ?? [], styles: sheet.styles ?? {},
-  })), workbookFormulas: doc.workbookFormulas ?? {}, workbook: seedStandardWorkbookLabels(migrateWorkbookGrid(doc)) };
+  })), workbookFormulas: doc.workbookFormulas ?? {}, workbook: seedStandardWorkbookLabels(migrateWorkbookGrid(doc)),
+  univerWorkbook: normalizeUniverWorkbookSnapshot(doc.univerWorkbook),
+  businessProjection: doc.businessProjection,
+  lastMutationId: doc.lastMutationId,
+  revision: doc.revision,
+  };
 }
 
 /**
@@ -340,97 +263,43 @@ export function parseCellInput(raw: string): SheetCell {
 // ------------------------------------------------------------------- scope
 
 export interface SheetScopeInput {
-  inputs: AhsInputsView | null;
-  result: AhsResult | null;
-  costItems: CostItemView[];
-  /** Vendor terpilih (kolom "sumber AHS") bila ada. */
+  volume: number | null;
   vendor: ProjectVendorView | null;
-  /** Semua vendor project untuk formula workbook lintas kolom. */
   vendors?: ProjectVendorView[];
 }
 
-/** Variabel yang boleh dipakai formula — semuanya output engine/repository. */
+/** Variables exposed to server-side custom-sheet formulas. */
 export function buildSheetVariables(input: SheetScopeInput): SheetVariable[] {
   const out: SheetVariable[] = [];
   const push = (name: string, label: string, group: string, value: number | null | undefined) => {
     out.push({ name, label, group, value: value === undefined ? null : value });
   };
-
-  if (input.inputs) {
-    const i = input.inputs;
-    push("volume", "Volume (liter)", "Input AHS", i.volume);
-    push("harga_jual_include", "Harga jual include", "Input AHS", i.harga_jual_include);
-    push("include_divisor", "Include divisor", "Input AHS", i.include_divisor);
-    push("ppn_rate", "PPN rate (0,11)", "Input AHS", i.ppn_rate);
-    push("pbbkb_rate", "PBBKB rate", "Input AHS", i.pbbkb_rate);
-    push("pph_inu_rate", "PPH INU rate", "Input AHS", i.pph_inu_rate);
-    push("bph_migas_rate", "BPH Migas rate", "Input AHS", i.bph_migas_rate);
-    push("harga_keekonomian", "Harga keekonomian", "Input AHS", i.harga_keekonomian);
-  }
-
-  const r = input.result;
-  if (r) {
-    push("harga_jual_dpp", "Harga jual DPP", "Hasil engine", r.harga_jual_dpp);
-    push("harga_jual_setelah_pajak", "Harga jual setelah pajak", "Hasil engine", r.harga_jual_setelah_pajak);
-    push("diskon", "Diskon (F004)", "Hasil engine", r.diskon);
-    push("revenue", "Total pendapatan (F006)", "Hasil engine", r.revenue);
-    push("pbbkb_output", "PBBKB penjualan", "Hasil engine", r.pbbkb_output);
-    push("pbbkb_input", "PBBKB biaya", "Hasil engine", r.pbbkb_input);
-    push("pbbkb_difference", "Selisih PBBKB", "Hasil engine", r.pbbkb_difference);
-    push("ppn_output", "PPN keluaran", "Hasil engine", r.ppn_output);
-    push("ppn_input", "PPN masukan", "Hasil engine", r.ppn_input);
-    push("ppn_difference", "Selisih PPN (F018)", "Hasil engine", r.ppn_difference);
-    push("total_cost", "Total biaya (F015A)", "Hasil engine", r.total_cost);
-    push("cost_per_liter", "Biaya per liter (F016)", "Hasil engine", r.cost_per_liter);
-    push("gross_profit", "Laba kotor (F017)", "Hasil engine", r.gross_profit);
-    push("net_profit", "Laba bersih", "Hasil engine", r.net_profit);
-    push("net_profit_per_liter", "Laba bersih per liter", "Hasil engine", r.net_profit_per_liter);
-    push("profit_percentage", "Persentase", "Hasil engine", r.profit_percentage);
-  }
-
-  const takenItems = new Set<string>();
-  for (const line of input.costItems) {
-    const name = uniqueName(line.description || `line_${line.line_no}`, takenItems);
-    push(`cost_${name}_rate`, `${line.description} — rate`, "Cost item", line.rate);
-    push(`cost_${name}_total`, `${line.description} — total`, "Cost item", line.total);
-  }
-
-  const takenCategories = new Set<string>();
-  const categories = new Map<string, number | null>();
-  for (const line of input.costItems) {
-    const key = line.category && line.category.trim() !== "" ? line.category : "tanpa kategori";
-    const current = categories.get(key);
-    categories.set(key, current === undefined ? line.total : current === null || line.total === null ? null : current + line.total);
-  }
-  for (const [category, total] of categories) {
-    const name = uniqueName(category, takenCategories);
-    push(`cat_${name}_total`, `${category} — subtotal`, "Subtotal kategori", total);
-  }
+  push("volume", "Volume (L)", "Proyek", input.volume);
 
   const v = input.vendor?.price ?? null;
   if (v) {
-    push("vendor_harga_dasar", "Vendor harga dasar", "Vendor terpilih", v.base_price);
-    push("vendor_ppn", "Vendor PPN", "Vendor terpilih", v.ppn_amount);
-    push("vendor_pbbkb", "Vendor PBBKB", "Vendor terpilih", v.pbbkb_amount);
-    push("vendor_pph", "Vendor PPH", "Vendor terpilih", v.pph_amount);
-    push("vendor_oat", "Vendor OAT", "Vendor terpilih", v.oat_amount);
-    push("vendor_ppn_oat", "Vendor PPN OAT", "Vendor terpilih", v.ppn_oat_amount);
-    push("vendor_bph", "Vendor BPH", "Vendor terpilih", v.bph_amount);
-    push("vendor_all_in", "Vendor all in", "Vendor terpilih", v.all_in_amount);
+    push("vendor_harga_dasar", "pemasok harga dasar", "pemasok terpilih", v.base_price);
+    push("vendor_ppn", "pemasok PPN", "pemasok terpilih", v.ppn_amount);
+    push("vendor_pbbkb", "pemasok PBBKB", "pemasok terpilih", v.pbbkb_amount);
+    push("vendor_pph", "pemasok PPH", "pemasok terpilih", v.pph_amount);
+    push("vendor_oat", "pemasok OAT", "pemasok terpilih", v.oat_amount);
+    push("vendor_ppn_oat", "pemasok PPN OAT", "pemasok terpilih", v.ppn_oat_amount);
+    push("vendor_bph", "pemasok BPH", "pemasok terpilih", v.bph_amount);
+    push("vendor_all_in", "pemasok all in", "pemasok terpilih", v.all_in_amount);
   }
 
   for (const entry of input.vendors ?? []) {
     const price = entry.price;
     if (!price) continue;
     const prefix = `vendor_${slug(entry.vendor.name)}`;
-    push(`${prefix}_base_price`, `${entry.vendor.name} - harga dasar`, "Semua vendor", price.base_price);
-    push(`${prefix}_ppn_amount`, `${entry.vendor.name} - PPN`, "Semua vendor", price.ppn_amount);
-    push(`${prefix}_pbbkb_amount`, `${entry.vendor.name} - PBBKB`, "Semua vendor", price.pbbkb_amount);
-    push(`${prefix}_pph_amount`, `${entry.vendor.name} - PPH`, "Semua vendor", price.pph_amount);
-    push(`${prefix}_oat_amount`, `${entry.vendor.name} - OAT`, "Semua vendor", price.oat_amount);
-    push(`${prefix}_ppn_oat_amount`, `${entry.vendor.name} - PPN OAT`, "Semua vendor", price.ppn_oat_amount);
-    push(`${prefix}_bph_amount`, `${entry.vendor.name} - BPH`, "Semua vendor", price.bph_amount);
-    push(`${prefix}_all_in_amount`, `${entry.vendor.name} - total`, "Semua vendor", price.all_in_amount);
+    push(`${prefix}_base_price`, `${entry.vendor.name} - harga dasar`, "Semua pemasok", price.base_price);
+    push(`${prefix}_ppn_amount`, `${entry.vendor.name} - PPN`, "Semua pemasok", price.ppn_amount);
+    push(`${prefix}_pbbkb_amount`, `${entry.vendor.name} - PBBKB`, "Semua pemasok", price.pbbkb_amount);
+    push(`${prefix}_pph_amount`, `${entry.vendor.name} - PPH`, "Semua pemasok", price.pph_amount);
+    push(`${prefix}_oat_amount`, `${entry.vendor.name} - OAT`, "Semua pemasok", price.oat_amount);
+    push(`${prefix}_ppn_oat_amount`, `${entry.vendor.name} - PPN OAT`, "Semua pemasok", price.ppn_oat_amount);
+    push(`${prefix}_bph_amount`, `${entry.vendor.name} - BPH`, "Semua pemasok", price.bph_amount);
+    push(`${prefix}_all_in_amount`, `${entry.vendor.name} - total`, "Semua pemasok", price.all_in_amount);
   }
 
   return out;
@@ -743,17 +612,10 @@ async function loadDocRow(db: Database, projectId: string): Promise<ProjectSheet
 }
 
 async function loadScope(db: Database, actor: Actor, projectId: string): Promise<SheetScopeInput> {
-  const [bundle, vendors] = await Promise.all([
-    getAhsBundle(db, actor, projectId),
-    listProjectVendors(db, actor, projectId),
-  ]);
+  const vendors = await listProjectVendors(db, actor, projectId);
   const entries = vendors.ok ? vendors.data : [];
-  return {
-    inputs: bundle.ok ? bundle.data.inputs : null,
-    result: bundle.ok ? bundle.data.preview : null,
-    costItems: bundle.ok ? bundle.data.costItems : [],
-    vendor: entries.find((entry) => entry.link.is_selected) ?? null,
-  };
+  const project = (await db.select<{ volume: number | null }>("projects", { where: [eq("id", projectId)], limit: 1 })).rows[0];
+  return { volume: project?.volume ?? null, vendor: entries.find((entry) => entry.link.is_selected) ?? null };
 }
 
 /** Dokumen + nilai terhitung untuk halaman project. Membuat baris default bila belum ada. */
@@ -788,6 +650,69 @@ async function persistDoc(
   await db.insert<ProjectSheetRow>("project_sheets", { project_id: projectId, doc });
 }
 
+/** Persist the complete Univer snapshot. The snapshot is the editable project instance, not the master template. */
+export async function saveUniverWorkbook(
+  db: Database,
+  actor: Actor,
+  projectId: string,
+  snapshot: Record<string, unknown>,
+  options: { baseRevision?: number; mutationId?: string } = {},
+): Promise<ActionResult<{ revision: number; calculationErrors: string[] }>> {
+  const ctx = await loadProjectContext(db, actor, projectId);
+  if (isActionErr(ctx)) return ctx;
+  if (!canWriteProject(ctx.access as ProjectAccess)) {
+    return { ok: false, error: "Anda hanya memiliki akses lihat pada proyek ini.", errorCode: "FORBIDDEN" };
+  }
+  try {
+    if (!snapshot || typeof snapshot !== "object" || !snapshot.sheets || typeof snapshot.sheets !== "object" || Array.isArray(snapshot.sheets) || !Object.keys(snapshot.sheets).length || !Array.isArray(snapshot.sheetOrder)) {
+      return { ok: false, error: "Lembar kerja tidak dapat dibaca. Coba buka kembali halaman ini.", errorCode: "INVALID_INPUT" };
+    }
+    const serialized = JSON.stringify(snapshot);
+    const order = snapshot.sheetOrder as unknown[];
+    if (new Set(order).size !== order.length || order.length !== Object.keys(snapshot.sheets).length || order.some((id) => typeof id !== "string" || !Object.hasOwn(snapshot.sheets as object, id))) return { ok: false, error: "Urutan lembar kerja tidak valid.", errorCode: "INVALID_INPUT" };
+    if (Buffer.byteLength(serialized, "utf8") > 5_000_000) {
+      return { ok: false, error: "Lembar kerja terlalu besar untuk disimpan (maksimal 5 MB).", errorCode: "INVALID_INPUT" };
+    }
+    for (const [id, value] of Object.entries(snapshot.sheets)) {
+      if (!value || typeof value !== "object" || Array.isArray(value) || !(snapshot.sheetOrder as unknown[]).includes(id)) return { ok: false, error: "Lembar kerja tidak lengkap.", errorCode: "INVALID_INPUT" };
+      const sheet = value as { name?: string; cellData?: unknown; rowCount?: number; columnCount?: number };
+      if (!Number.isInteger(sheet.rowCount) || !Number.isInteger(sheet.columnCount) || sheet.rowCount! <= 0 || sheet.columnCount! <= 0 || sheet.rowCount! > 1_048_576 || sheet.columnCount! > 16_384) return { ok: false, error: "Ukuran lembar kerja tidak valid.", errorCode: "INVALID_INPUT" };
+      if (typeof sheet.name !== "string" || !sheet.name.trim() || sheet.cellData != null && (typeof sheet.cellData !== "object" || Array.isArray(sheet.cellData))) return { ok: false, error: "Isi lembar kerja tidak valid.", errorCode: "INVALID_INPUT" };
+    }
+    const normalized = normalizeUniverWorkbookSnapshot(snapshot);
+    const projection = await calculateWorkbook(normalized);
+    return await atomic(db, async (tx) => {
+      const row = await loadDocRow(tx, projectId);
+      const doc = row ? parseSheetsDoc(row.doc) : defaultSheetsDoc();
+      const revision = row?.revision ?? doc.revision ?? 0;
+      if (options.mutationId && options.mutationId === doc.lastMutationId) return ok({ revision, calculationErrors: doc.businessProjection?.errors ?? [] });
+      if (options.baseRevision !== undefined && options.baseRevision !== revision) return { ok: false, error: "Lembar kerja berubah di tab lain. Muat versi terbaru; perubahan Anda tetap ada dalam draf.", errorCode: "CONFLICT" };
+      const previousKeys = new Set([
+        ...Object.keys(doc.businessProjection?.values ?? {}),
+        ...Object.values(bindings(doc.univerWorkbook ?? {})).map((entry) => entry.comment).filter((key): key is string => Boolean(key)),
+      ].filter((key) => key.startsWith("project.") || key.startsWith("vendor.")));
+      for (const key of previousKeys) {
+        if (!Object.hasOwn(projection.values, key)) { projection.values[key] = null; projection.errors.push(key); }
+      }
+      if (!String(projection.values["project.name"] ?? "").trim()) return err("Nama proyek wajib diisi.", { fieldErrors: { name: "Nama proyek wajib diisi." }, errorCode: "INVALID_INPUT" });
+      if (!["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"].includes(String(projection.values["project.status"] ?? ""))) return err("Pilih status proyek yang tersedia.", { fieldErrors: { status: "Pilih status proyek yang tersedia." }, errorCode: "INVALID_INPUT" });
+      doc.univerWorkbook = normalized;
+      doc.businessProjection = projection;
+      doc.lastMutationId = options.mutationId;
+      doc.revision = revision + 1;
+      if (row) await tx.update("project_sheets", row.id, { doc, ...(tx.local ? { revision: revision + 1 } : {}) });
+      else await tx.insert("project_sheets", { project_id: projectId, doc, ...(tx.local ? { revision: revision + 1 } : {}) });
+      if (tx.local) {
+        const { applyWorkbookProjection } = await import("./editor");
+        await applyWorkbookProjection(tx, actor, projectId, projection);
+      }
+      return ok({ revision: revision + 1, calculationErrors: projection.errors });
+    });
+  } catch (error) {
+    return toActionResultError(error, "project_sheets");
+  }
+}
+
 /** Formula workbook bisnis memakai dokumen JSONB yang sama dengan dynamic sheet. */
 export async function setWorkbookFormula(
   db: Database,
@@ -799,29 +724,17 @@ export async function setWorkbookFormula(
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
   if (!canWriteProject(ctx.access as ProjectAccess)) {
-    return { ok: false, error: "Anda hanya memiliki akses lihat pada project ini.", errorCode: "FORBIDDEN" };
+    return { ok: false, error: "Anda hanya memiliki akses lihat pada proyek ini.", errorCode: "FORBIDDEN" };
   }
   try {
     const row = await loadDocRow(db, projectId);
     const doc = row ? parseSheetsDoc(row.doc) : defaultSheetsDoc();
-    const before = doc.workbookFormulas?.[cellKey]?.raw ?? null;
     const formulas = { ...(doc.workbookFormulas ?? {}) };
     if (entry) formulas[cellKey] = entry;
     else delete formulas[cellKey];
     doc.version = 5;
     doc.workbookFormulas = formulas;
     await persistDoc(db, projectId, doc);
-    await recordHistory(db, {
-      projectId,
-      entity: "project_sheets",
-      entityId: row?.id ?? projectId,
-      action: row ? "UPDATE" : "INSERT",
-      field: `workbook_formula:${cellKey}`,
-      oldValue: before,
-      newValue: entry?.raw ?? null,
-      reason: entry ? "Formula cell workbook diubah" : "Formula cell workbook dihapus",
-      changedBy: actor.id,
-    });
     return ok(undefined);
   } catch (e) {
     return toActionResultError(e, "project_sheets");
@@ -846,7 +759,7 @@ async function withDoc(
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
   if (!canWriteProject(ctx.access as ProjectAccess)) {
-    return { ok: false, error: "Anda hanya memiliki akses lihat pada project ini.", errorCode: "FORBIDDEN" };
+    return { ok: false, error: "Anda hanya memiliki akses lihat pada proyek ini.", errorCode: "FORBIDDEN" };
   }
 
   try {
@@ -854,18 +767,6 @@ async function withDoc(
     const doc = row ? parseSheetsDoc(row.doc) : defaultSheetsDoc();
     const result = mutate({ db, actor, projectId, doc });
     await persistDoc(db, projectId, result.doc);
-
-    await recordHistory(db, {
-      projectId,
-      entity: "project_sheets",
-      entityId: row?.id ?? projectId,
-      action: row ? "UPDATE" : "INSERT",
-      field: result.audit,
-      oldValue: result.before,
-      newValue: result.after,
-      reason: "Tabel dinamis (spreadsheet) diubah",
-      changedBy: actor.id,
-    });
 
     const scope = await loadScope(db, actor, projectId);
     return ok(buildSheetsView(result.doc, scope));

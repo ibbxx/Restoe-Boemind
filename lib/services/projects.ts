@@ -7,30 +7,47 @@
 
 import { can } from "../auth/permissions";
 import type { Actor } from "../auth/session";
-import { eq, searchAcross, type Database, type Filter } from "../data/db";
+import { atomic, eq, searchAcross, type Database, type Filter } from "../data/db";
 import { toNumber } from "../format";
 import type { Project, ProjectStatus } from "../types/domain";
 import { PROJECT_STATUSES } from "../types/domain";
 import { isActionErr, loadProjectContext } from "./access";
-import { recordHistory } from "./history";
 import { buildPage, normalisePage, normalisePageSize, toRange, type Page } from "./pagination";
 import { err, forbidden, ok, toActionResultError, type ActionResult } from "./result";
 import { createProjectSheetsTemplate } from "./sheets";
+import { cache } from "react";
 
 export const PROJECT_SORT_KEYS = ["updated_at", "name", "code", "status", "period_label"] as const;
 export type ProjectSortKey = (typeof PROJECT_SORT_KEYS)[number];
 
 export const PROJECT_SORT_LABELS: Record<ProjectSortKey, string> = {
-  updated_at: "Updated",
-  name: "Project Name",
-  code: "Project Code",
+  updated_at: "Diperbarui",
+  name: "Nama proyek",
+  code: "Kode proyek",
   status: "Status",
-  period_label: "Period",
+  period_label: "Periode",
 };
 
 export function parseProjectStatus(value: string | undefined): ProjectStatus | "" {
   return value && PROJECT_STATUSES.includes(value as ProjectStatus) ? (value as ProjectStatus) : "";
 }
+
+/** Resolve the public project URL token without exposing the database UUID. */
+export const resolveProjectCode = cache(async function resolveProjectCode(
+  db: Database,
+  code: string,
+): Promise<ActionResult<{ id: string; code: string }>> {
+  try {
+    const { rows } = await db.select<Pick<Project, "id" | "code">>("projects", {
+      where: [eq("code", decodeURIComponent(code))],
+      limit: 1,
+    });
+    const project = rows[0];
+    return project ? ok(project) : err("proyek tidak ditemukan.", { errorCode: "NOT_FOUND" });
+  } catch (e) {
+    return toActionResultError(e, "projects");
+  }
+});
 
 export interface ProjectListFilters {
   search?: string;
@@ -53,7 +70,6 @@ export interface ProjectListRowView {
   status: string;
   pic_name: string | null;
   updated_at: string;
-  scenario_count: number;
   vendor_count: number;
 }
 
@@ -85,7 +101,7 @@ async function referenceMaps(db: Database, customerIds: string[], productIds: st
 
 export async function listProjects(
   db: Database,
-  actor: Actor,
+  _actor: Actor,
   filters: ProjectListFilters = {},
 ): Promise<ActionResult<Page<ProjectListRowView>>> {
   try {
@@ -109,50 +125,11 @@ export async function listProjects(
 
     const projectIds = rows.map((r) => r.id);
 
-    const [memberships, scenarios, ahsRows] = await Promise.all([
-      projectIds.length
-        ? db.select<{ project_id: string; vendor_id: string }>("project_vendors", {
-            where: [{ column: "project_id", op: "in", value: projectIds }],
-          })
-        : Promise.resolve({ rows: [], count: 0 }),
-      projectIds.length
-        ? db.select<{ id: string; project_id: string; created_at: string }>("price_scenarios", {
-            where: [{ column: "project_id", op: "in", value: projectIds }],
-            order: [{ column: "created_at", ascending: false }],
-          })
-        : Promise.resolve({ rows: [], count: 0 }),
-      projectIds.length
-        ? db.select<{ project_id: string; volume: number | string | null }>("ahs", {
-            where: [{ column: "project_id", op: "in", value: projectIds }],
-            order: [{ column: "created_at", ascending: false }],
-          })
-        : Promise.resolve({ rows: [], count: 0 }),
-    ]);
-
-    const latestScenario = new Map<string, string>();
-    const scenarioCount = new Map<string, number>();
-    for (const s of scenarios.rows) {
-      if (!latestScenario.has(s.project_id)) latestScenario.set(s.project_id, s.id);
-      scenarioCount.set(s.project_id, (scenarioCount.get(s.project_id) ?? 0) + 1);
-    }
-
-    const scenarioIds = [...latestScenario.values()];
-    const volumes = scenarioIds.length
-      ? (
-          await db.select<{ scenario_id: string; value_num: number | string | null }>("scenario_inputs", {
-            where: [
-              { column: "scenario_id", op: "in", value: scenarioIds },
-              eq("field_key", "volume"),
-            ],
-          })
-        ).rows
-      : [];
-    const volumeByScenario = new Map(volumes.map((v) => [v.scenario_id, toNumber(v.value_num)]));
-
-    const ahsVolume = new Map<string, number | null>();
-    for (const row of ahsRows.rows) {
-      if (!ahsVolume.has(row.project_id)) ahsVolume.set(row.project_id, toNumber(row.volume));
-    }
+    const memberships = projectIds.length
+      ? await db.select<{ project_id: string; vendor_id: string }>("project_vendors", {
+          where: [{ column: "project_id", op: "in", value: projectIds }],
+        })
+      : { rows: [], count: 0 };
 
     const vendorCount = new Map<string, number>();
     for (const v of memberships.rows) {
@@ -167,10 +144,6 @@ export async function listProjects(
     );
 
     const views: ProjectListRowView[] = rows.map((row) => {
-      const scenarioId = latestScenario.get(row.id) ?? null;
-      const volume = scenarioId
-        ? volumeByScenario.get(scenarioId) ?? ahsVolume.get(row.id) ?? null
-        : ahsVolume.get(row.id) ?? null;
       return {
         id: row.id,
         code: row.code,
@@ -179,11 +152,10 @@ export async function listProjects(
         product_label: row.product_id ? refs.productById.get(row.product_id) ?? null : null,
         location: row.location,
         period_label: row.period_label,
-        volume,
+        volume: toNumber(row.volume),
         status: row.status,
         pic_name: row.pic_id ? refs.profileById.get(row.pic_id) ?? null : null,
         updated_at: row.updated_at,
-        scenario_count: scenarioCount.get(row.id) ?? 0,
         vendor_count: vendorCount.get(row.id) ?? 0,
       };
     });
@@ -201,10 +173,7 @@ export interface ProjectDetailView {
   market_name: string | null;
   pic_name: string | null;
   access: string;
-  scenario_count: number;
   vendor_count: number;
-  latest_scenario_id: string | null;
-  latest_scenario_name: string | null;
   volume: number | null;
 }
 
@@ -218,7 +187,7 @@ export async function getProjectDetail(
     if (isActionErr(ctx)) return ctx;
     const { project, access } = ctx;
 
-    const [customers, products, markets, profiles, vendors, scenarios, ahsRows] = await Promise.all([
+    const [customers, products, markets, profiles, vendors] = await Promise.all([
       project.customer_id
         ? db.select<{ id: string; name: string }>("customers", { where: [eq("id", project.customer_id)], limit: 1 })
         : Promise.resolve({ rows: [], count: 0 }),
@@ -238,26 +207,7 @@ export async function getProjectDetail(
           })
         : Promise.resolve({ rows: [], count: 0 }),
       db.select<{ id: string }>("project_vendors", { where: [eq("project_id", projectId)] }),
-      db.select<{ id: string; name: string; created_at: string }>("price_scenarios", {
-        where: [eq("project_id", projectId)],
-        order: [{ column: "created_at", ascending: false }],
-      }),
-      db.select<{ project_id: string; volume: number | string | null }>("ahs", {
-        where: [eq("project_id", projectId)],
-        order: [{ column: "created_at", ascending: false }],
-        limit: 1,
-      }),
     ]);
-
-    const latestScenario = scenarios.rows[0] ?? null;
-    let volume: number | null = toNumber(ahsRows.rows[0]?.volume);
-    if (latestScenario) {
-      const { rows } = await db.select<{ value_num: number | string | null; field_key: string }>(
-        "scenario_inputs",
-        { where: [eq("scenario_id", latestScenario.id), eq("field_key", "volume")], limit: 1 },
-      );
-      volume = toNumber(rows[0]?.value_num) ?? volume;
-    }
 
     const product = products.rows[0];
     return ok({
@@ -267,11 +217,8 @@ export async function getProjectDetail(
       market_name: markets.rows[0]?.name ?? null,
       pic_name: profiles.rows[0]?.full_name ?? profiles.rows[0]?.email ?? null,
       access,
-      scenario_count: scenarios.rows.length,
       vendor_count: vendors.rows.length,
-      latest_scenario_id: latestScenario?.id ?? null,
-      latest_scenario_name: latestScenario?.name ?? null,
-      volume,
+      volume: toNumber(project.volume),
     });
   } catch (e) {
     return toActionResultError(e, "projects");
@@ -279,7 +226,8 @@ export async function getProjectDetail(
 }
 
 export interface ProjectFormInput {
-  code: string;
+  /** Optional for the user-facing create form; legacy callers may still set it. */
+  code?: string | null;
   name: string;
   customer_id?: string | null;
   product_id?: string | null;
@@ -298,16 +246,15 @@ export function validateProjectForm(input: ProjectFormInput): Record<string, str
   const code = input.code?.trim() ?? "";
   const name = input.name?.trim() ?? "";
 
-  if (code === "") errors.code = "Project Code wajib diisi.";
-  else if (!/^[A-Za-z0-9._/-]{2,40}$/.test(code)) {
-    errors.code = "Project Code hanya boleh huruf, angka, titik, garis miring, - dan _ (2–40 karakter).";
+  if (code !== "" && !/^[A-Za-z0-9._/-]{2,40}$/.test(code)) {
+    errors.code = "Kode proyek hanya boleh berisi huruf, angka, titik, garis miring, dan garis bawah (2–40 karakter).";
   }
 
-  if (name === "") errors.name = "Project Name wajib diisi.";
-  else if (name.length > 200) errors.name = "Project Name maksimal 200 karakter.";
+  if (name === "") errors.name = "Nama proyek wajib diisi.";
+  else if (name.length > 200) errors.name = "Nama proyek maksimal 200 karakter.";
 
   if (!PROJECT_STATUSES.includes(input.status as ProjectStatus)) {
-    errors.status = `Status harus salah satu dari: ${PROJECT_STATUSES.join(", ")}.`;
+    errors.status = "Pilih status proyek yang tersedia.";
   }
 
   if (input.volume !== null && input.volume !== undefined) {
@@ -320,7 +267,6 @@ export function validateProjectForm(input: ProjectFormInput): Record<string, str
 
 export function blankProjectForm(): ProjectFormInput {
   return {
-    code: "",
     name: "",
     customer_id: null,
     product_id: null,
@@ -334,13 +280,44 @@ export function blankProjectForm(): ProjectFormInput {
   };
 }
 
+const PROJECT_CODE_ATTEMPTS = 8;
+
+/** Build the next public project code for a calendar month. */
+export async function generateProjectCode(
+  db: Database,
+  now = new Date(),
+): Promise<string> {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).formatToParts(now);
+  const month = `${parts.find((p) => p.type === "year")!.value}${parts.find((p) => p.type === "month")!.value}`;
+  const prefix = `PRJ-${month}-`;
+  const existing = await db.select<{ code: string }>("projects", {
+    where: [{ column: "code", op: "gte", value: prefix }, { column: "code", op: "lt", value: `${prefix}\uffff` }],
+  });
+  const numbers = existing.rows
+    .map(({ code }) => new RegExp(`^PRJ-${month}-(\\d{3,})$`, "i").exec(code)?.[1])
+    .map((value) => (value ? Number(value) : 0))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const next = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+  return `${prefix}${String(next).padStart(3, "0")}`;
+}
+
+function isProjectCodeCollision(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+  return /duplicate|unique|23505|projects_code_key|projects\.code/i.test(message);
+}
+
 export async function createProject(
   db: Database,
   actor: Actor,
   input: ProjectFormInput,
 ): Promise<ActionResult<{ id: string; code: string }>> {
-  if (!can("create_project", actor.role)) {
-    return forbidden("membuat project");
+  try { return await atomic(db, (tx) => createProjectInTransaction(tx, actor, input)); }
+  catch (error) { return toActionResultError(error, "projects"); }
+}
+
+async function createProjectInTransaction(db: Database, actor: Actor, input: ProjectFormInput): Promise<ActionResult<{ id: string; code: string }>> {
+  if (!actor.isActive || !can("create_project", actor.role)) {
+    return forbidden("membuat proyek");
   }
 
   const fieldErrors = validateProjectForm(input);
@@ -348,47 +325,68 @@ export async function createProject(
     return err("Periksa kembali isian form.", { fieldErrors, errorCode: "INVALID_INPUT" });
   }
 
-  const code = input.code.trim();
-
   try {
-    const existing = await db.select<{ id: string }>("projects", {
-      where: [eq("code", code)],
-      limit: 1,
-    });
-    if (existing.rows.length > 0) {
-      return err("Project Code sudah dipakai.", {
-        fieldErrors: { code: "Project Code sudah dipakai." },
-        errorCode: "INVALID_INPUT",
+    let project: Project | null = null;
+    for (let attempt = 0; attempt < PROJECT_CODE_ATTEMPTS; attempt += 1) {
+      const code = input.code?.trim() || (await generateProjectCode(db));
+      const existing = await db.select<{ id: string }>("projects", {
+        where: [eq("code", code)],
+        limit: 1,
+      });
+      if (existing.rows.length > 0) {
+        if (input.code?.trim()) {
+          return err("Kode proyek sudah dipakai.", {
+            fieldErrors: { code: "Kode proyek sudah dipakai." },
+            errorCode: "INVALID_INPUT",
+          });
+        }
+        continue;
+      }
+      try {
+        project = await db.insert<Project>("projects", {
+          code,
+          name: input.name.trim(),
+          customer_id: input.customer_id ?? null,
+          product_id: input.product_id ?? null,
+          market_id: input.market_id ?? null,
+          location: input.location ?? null,
+          period_label: input.period_label ?? null,
+          pic_id: input.pic_id ?? null,
+          status: input.status,
+          notes: input.notes ?? null,
+          volume: input.volume ?? null,
+          created_by: actor.id,
+        });
+        break;
+      } catch (error) {
+        if (!input.code?.trim() && isProjectCodeCollision(error)) continue;
+        throw error;
+      }
+    }
+    if (!project) {
+      return err("Kode proyek belum dapat dibuat. Coba simpan lagi.", {
+        errorCode: "DATABASE_ERROR",
       });
     }
-
-    const project = await db.insert<Project>("projects", {
-      code,
-      name: input.name.trim(),
-      customer_id: input.customer_id ?? null,
-      product_id: input.product_id ?? null,
-      market_id: input.market_id ?? null,
-      location: input.location ?? null,
-      period_label: input.period_label ?? null,
-      pic_id: input.pic_id ?? null,
-      status: input.status,
-      notes: input.notes ?? null,
-      created_by: actor.id,
-    });
 
     // A project is never allowed to exist without its physical workbook.
     // Insert this before optional AHS/member setup so a failure can be safely
     // compensated without leaving dependent rows behind.
     try {
+      const doc = createProjectSheetsTemplate({ code: project.code, name: project.name, location: project.location, periodLabel: project.period_label, volume: input.volume ?? null });
+      if (db.local) {
+        const { writeBoundValue } = await import("../workbook/bindings");
+        for (const [field, table, key] of [["customer", "customers", "name"], ["product", "products", "name"], ["pic", "profiles", "email"]] as const) {
+          const id = input[`${field}_id`];
+          const label = id ? (await db.select<Record<string, unknown>>(table, { where: [eq("id", id)], limit: 1 })).rows[0]?.[key] : null;
+          writeBoundValue(doc.univerWorkbook!, `project.${field}`, label);
+          if (field === "customer") writeBoundValue(doc.univerWorkbook!, "ahs.customer", label);
+        }
+        writeBoundValue(doc.univerWorkbook!, "project.status", input.status);
+      }
       await db.insert("project_sheets", {
         project_id: project.id,
-        doc: createProjectSheetsTemplate({
-          code: project.code,
-          name: project.name,
-          location: project.location,
-          periodLabel: project.period_label,
-          volume: input.volume ?? null,
-        }),
+        doc,
       });
     } catch (templateError) {
       await db.remove("projects", project.id);
@@ -397,46 +395,15 @@ export async function createProject(
 
     const warnings: string[] = [];
 
-    // Volume is not a column of `projects`; it belongs to the AHS block. Create
-    // the project's first AHS row so the workflow has a real starting point.
-    if (input.volume !== null && input.volume !== undefined) {
-      await db.insert("ahs", {
-        project_id: project.id,
-        template_id: "T_A_AHS_STANDARD",
-        title: "ANALISIS HARGA SATUAN (AHS)",
-        volume: input.volume,
-        created_by: actor.id,
-      });
-    }
-
     // The assigned PIC must be able to open the project: membership is the
     // mechanism RLS uses (has_project_access -> project_members).
     if (input.pic_id) {
-      try {
-        await db.insert("project_members", {
+      await db.insert("project_members", {
           project_id: project.id,
           profile_id: input.pic_id,
           access_level: "EDIT",
-        });
-      } catch {
-        warnings.push(
-          "PIC tersimpan pada project, tetapi baris project_members gagal dibuat — PIC belum tentu punya akses.",
-        );
-      }
+      });
     }
-
-    const audited = await recordHistory(db, {
-      projectId: project.id,
-      entity: "projects",
-      entityId: project.id,
-      action: "INSERT",
-      field: "project",
-      oldValue: null,
-      newValue: `${project.code} — ${project.name}`,
-      reason: "Project dibuat",
-      changedBy: actor.id,
-    });
-    if (!audited) warnings.push("History project tidak dapat ditulis.");
 
     return ok({ id: project.id, code: project.code }, warnings);
   } catch (e) {
@@ -450,15 +417,21 @@ export interface UpdateProjectResult {
 }
 
 export async function updateProject(
+  db: Database, actor: Actor, projectId: string, input: ProjectFormInput,
+): Promise<ActionResult<UpdateProjectResult>> {
+  return atomic(db, (tx) => updateProjectInternal(tx, actor, projectId, input));
+}
+
+async function updateProjectInternal(
   db: Database,
   actor: Actor,
   projectId: string,
-  input: ProjectFormInput & { reason?: string | null },
+  input: ProjectFormInput,
 ): Promise<ActionResult<UpdateProjectResult>> {
   const ctx = await loadProjectContext(db, actor, projectId);
   if (isActionErr(ctx)) return ctx;
 
-  if (ctx.access === "VIEW") return forbidden("mengubah project (akses read-only)");
+  if (ctx.access === "VIEW") return forbidden("mengubah proyek (akses read-only)");
 
   const fieldErrors = validateProjectForm(input);
   if (Object.keys(fieldErrors).length > 0) {
@@ -466,7 +439,7 @@ export async function updateProject(
   }
 
   const patch: Record<string, unknown> = {
-    code: input.code.trim(),
+    code: input.code?.trim() || ctx.project.code,
     name: input.name.trim(),
     customer_id: input.customer_id ?? null,
     product_id: input.product_id ?? null,
@@ -475,7 +448,9 @@ export async function updateProject(
     period_label: input.period_label ?? null,
     pic_id: input.pic_id ?? null,
     status: input.status,
-    notes: input.notes ?? null,
+    volume: input.volume ?? null,
+    // The simplified form does not expose Notes; preserve existing notes on edit.
+    notes: input.notes === undefined ? ctx.project.notes : input.notes,
   };
 
   try {
@@ -485,13 +460,28 @@ export async function updateProject(
       limit: 1,
     });
     if (codeOwner.rows.length > 0 && codeOwner.rows[0]!.id !== projectId) {
-      return err("Project Code sudah dipakai project lain.", {
-        fieldErrors: { code: "Project Code sudah dipakai project lain." },
+      return err("Kode proyek sudah dipakai proyek lain.", {
+        fieldErrors: { code: "Kode proyek sudah dipakai proyek lain." },
         errorCode: "INVALID_INPUT",
       });
     }
 
     await db.update<Project>("projects", projectId, patch);
+
+    if (db.local) {
+      const label = async (table: "customers" | "products" | "profiles", id: string | null | undefined, field: string) => id
+        ? (await db.select<Record<string, unknown>>(table, { where: [eq("id", id)], limit: 1 })).rows[0]?.[field] ?? null : null;
+      const { patchWorkbookFields } = await import("./editor");
+      const saved = await patchWorkbookFields(db, actor, projectId, {
+        "project.name": patch.name, "project.location": patch.location,
+        "project.customer": await label("customers", input.customer_id, "name"),
+        "project.product": await label("products", input.product_id, "name"),
+        "project.pic": await label("profiles", input.pic_id, "email"),
+        "project.period_label": patch.period_label, "project.status": patch.status,
+        "project.volume": input.volume ?? null,
+      });
+      if (!saved.ok) return saved;
+    }
 
     const changed: Array<{ field: string; old: string | null; new: string | null }> = [];
     for (const [field, next] of Object.entries(patch)) {
@@ -502,38 +492,18 @@ export async function updateProject(
     }
 
     const warnings: string[] = [];
-    if (changed.length > 0) {
-      for (const c of changed) {
-        const wrote = await recordHistory(db, {
-          projectId,
-          entity: "projects",
-          entityId: projectId,
-          action: "UPDATE",
-          field: c.field,
-          oldValue: c.old,
-          newValue: c.new,
-          reason: input.reason ?? "Project diubah",
-          changedBy: actor.id,
-        });
-        if (!wrote) {
-          warnings.push("Sebagian history tidak dapat ditulis.");
-          break;
-        }
-      }
-    }
 
     // Keep the PIC membership in sync when the PIC is reassigned: without a
     // project_members row the new PIC could not open the project (RLS).
     const newPic = input.pic_id ?? null;
     if (newPic && newPic !== previous.pic_id) {
-      try {
+      const membership = await db.select("project_members", { where: [eq("project_id", projectId), eq("profile_id", newPic)], limit: 1 });
+      if (!membership.rows.length) {
         await db.insert("project_members", {
           project_id: projectId,
           profile_id: newPic,
           access_level: "EDIT",
         });
-      } catch {
-        warnings.push("PIC baru tersimpan, tetapi project_members gagal dibuat.");
       }
     }
 
@@ -549,12 +519,13 @@ export async function deleteProject(
   projectId: string,
 ): Promise<ActionResult<{ id: string }>> {
   if (!can("delete_project", actor.role)) {
-    return forbidden("menghapus project (hanya ADMIN)");
+    return forbidden("menghapus proyek (hanya ADMIN)");
   }
   try {
     const ctx = await loadProjectContext(db, actor, projectId);
     if (isActionErr(ctx)) return ctx;
-    await db.remove("projects", projectId);
+    if (db.backup) await db.backup("before-delete");
+    await atomic(db, async (tx) => { await tx.remove("projects", projectId); });
     return ok({ id: projectId });
   } catch (e) {
     return toActionResultError(e, "projects");

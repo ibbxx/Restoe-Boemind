@@ -153,36 +153,3 @@ export interface AhsResult {
   formulas_used: Record<string, string>;
 }
 
-export interface ScenarioSnapshot {
-  scenario_id: string;
-  project_id: string;
-  parent_scenario_id: string | null;
-  name: string;
-  template_id: string;
-  input: AhsInput;
-  result: AhsResult | null;
-  created_by: string;
-  created_at: string;
-  reason: string;
-}
-
-export type CompareMetric =
-  | "vendor_price"
-  | "customer_price"
-  | "volume"
-  | "revenue"
-  | "total_cost"
-  | "gross_profit"
-  | "ppn_difference"
-  | "net_profit"
-  | "net_profit_per_liter"
-  | "profit_percentage";
-
-export interface ScenarioComparisonRow {
-  metric: CompareMetric;
-  label: string;
-  v1: number | null;
-  v2: number | null;
-  difference: number | null;
-  difference_pct: number | null;
-}

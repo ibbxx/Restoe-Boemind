@@ -6,39 +6,18 @@
 export type UserRole = "ADMIN" | "PROCUREMENT" | "PIC" | "VIEWER";
 
 export type ProjectStatus = "ACTIVE" | "COMPLETED" | "ON_HOLD" | "CANCELLED";
+export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Aktif", COMPLETED: "Selesai", ON_HOLD: "Ditunda", CANCELLED: "Dibatalkan",
+};
 
 export type AccessLevel = "EDIT" | "VIEW";
 
-export type ScenarioType =
-  | "STANDARD"
-  | "CASH"
-  | "TEMPO"
-  | "INTERNAL_FIX"
-  | "KROS_CEK"
-  | "REAL_COST"
-  | "KOMBINASI"
-  | "BAGI_HASIL"
-  | "OPSI_VOLUME";
-
-export type HistoryAction = "INSERT" | "UPDATE" | "DELETE" | "CLONE" | "CALCULATE";
 
 export const PROJECT_STATUSES: ProjectStatus[] = [
   "ACTIVE",
   "COMPLETED",
   "ON_HOLD",
   "CANCELLED",
-];
-
-export const SCENARIO_TYPES: ScenarioType[] = [
-  "STANDARD",
-  "CASH",
-  "TEMPO",
-  "INTERNAL_FIX",
-  "KROS_CEK",
-  "REAL_COST",
-  "KOMBINASI",
-  "BAGI_HASIL",
-  "OPSI_VOLUME",
 ];
 
 export interface Profile {
@@ -89,6 +68,8 @@ export interface Vendor {
 
 export interface Project {
   id: string;
+  volume: number | null;
+  active_ahs_id?: string | null;
   code: string;
   name: string;
   customer_id: string | null;
@@ -118,7 +99,6 @@ export interface VendorPrice {
   id: string;
   project_id: string;
   vendor_id: string;
-  scenario_id: string | null;
   base_price: number | null;
   ppn_rate: number | null;
   ppn_amount: number | null;
@@ -178,7 +158,6 @@ export interface Ahs {
 export interface AhsCostItem {
   id: string;
   ahs_id: string;
-  scenario_id: string | null;
   line_no: number;
   category: string | null;
   description: string;
@@ -189,68 +168,6 @@ export interface AhsCostItem {
   formula_id: string | null;
   is_summed_in_total: boolean;
   created_at: string;
-}
-
-export interface PriceScenario {
-  id: string;
-  project_id: string;
-  parent_scenario_id: string | null;
-  name: string;
-  scenario_type: ScenarioType;
-  template_id: string;
-  reason: string | null;
-  is_locked: boolean;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ScenarioInput {
-  id: string;
-  scenario_id: string;
-  field_key: string;
-  value_num: number | null;
-  value_text: string | null;
-  value_date: string | null;
-  created_at: string;
-}
-
-export interface CalculationResult {
-  id: string;
-  scenario_id: string;
-  template_id: string;
-  harga_jual_dpp: number | null;
-  harga_jual_setelah_pajak: number | null;
-  revenue: number | null;
-  total_cost: number | null;
-  cost_per_liter: number | null;
-  ppn_output: number | null;
-  ppn_input: number | null;
-  ppn_difference: number | null;
-  gross_profit: number | null;
-  net_profit: number | null;
-  net_profit_per_liter: number | null;
-  profit_percentage: number | null;
-  formulas_used: Record<string, string> | null;
-  engine_version: string | null;
-  computed_at: string;
-  is_valid: boolean;
-}
-
-export interface ProjectHistoryRow {
-  id: string;
-  project_id: string;
-  scenario_id: string | null;
-  entity: string;
-  entity_id: string | null;
-  action: HistoryAction;
-  field: string | null;
-  old_value: string | null;
-  new_value: string | null;
-  reason: string | null;
-  impact_json: Record<string, { before: number | null; after: number | null; delta: number | null }> | null;
-  changed_by: string | null;
-  changed_at: string;
 }
 
 export interface CalculationTemplateRow {

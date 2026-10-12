@@ -7,10 +7,10 @@ export default function NotFound() {
     <div className="mx-auto max-w-2xl p-8">
       <EmptyState
         title="Halaman tidak ditemukan"
-        description="Route yang Anda buka tidak ada, atau Anda tidak memiliki akses ke data tersebut (RLS)."
+        description="Halaman tidak ditemukan atau Anda tidak memiliki akses."
         action={
-          <Link href="/dashboard" className="btn-primary">
-            Kembali ke dashboard
+          <Link href="/projects" className="btn-primary">
+            Kembali ke proyek
           </Link>
         }
       />

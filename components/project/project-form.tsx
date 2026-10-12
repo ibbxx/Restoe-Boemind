@@ -5,7 +5,7 @@ import { useActionState } from "react";
 
 import { createProjectAction, updateProjectAction, type ProjectFormState } from "@/lib/actions/projects";
 import type { ProjectFormInput } from "@/lib/services/projects";
-import { PROJECT_STATUSES } from "@/lib/types/domain";
+import { PROJECT_STATUSES, PROJECT_STATUS_LABELS } from "@/lib/types/domain";
 import { FormAlerts, SubmitButton } from "@/components/shared/forms";
 import { Card, CardHeader, Field } from "@/components/shared/primitives";
 
@@ -28,27 +28,15 @@ export function ProjectForm({ mode, initial, readOnly = false }: ProjectFormProp
 
       <FormAlerts
         state={state}
-        successMessage={mode === "edit" ? "Project saved." : undefined}
+        successMessage={mode === "edit" ? "Proyek tersimpan." : undefined}
       />
 
       <Card>
         <CardHeader
-          title="Project details"
+          title="Detail proyek"
         />
         <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Project code" required error={err("code")}>
-            <input
-              className="input"
-              name="code"
-              defaultValue={initial.code}
-              required
-              readOnly={readOnly}
-              maxLength={40}
-              placeholder="PRJ-001"
-            />
-          </Field>
-
-          <Field label="Project name" required error={err("name")}>
+          <Field label="Nama proyek" required error={err("name")}>
             <input
               className="input"
               name="name"
@@ -59,18 +47,18 @@ export function ProjectForm({ mode, initial, readOnly = false }: ProjectFormProp
             />
           </Field>
 
-          <Field label="Customer" hint="Isi manual. Data baru akan dibuat otomatis bila role Anda diizinkan." error={err("customer")} showHint>
+          <Field label="Pelanggan" error={err("customer")}>
             <input
               className="input"
               name="customer"
               defaultValue=""
               readOnly={readOnly}
-              placeholder="Ketik nama customer…"
+              placeholder="Ketik nama pelanggan…"
               autoComplete="off"
             />
           </Field>
 
-          <Field label="Product" hint="Isi manual sesuai kebutuhan project." error={err("product")} showHint>
+          <Field label="Produk" error={err("product")}>
             <input
               className="input"
               name="product"
@@ -81,19 +69,15 @@ export function ProjectForm({ mode, initial, readOnly = false }: ProjectFormProp
             />
           </Field>
 
-          <Field label="Market / region" hint="Isi manual sesuai konteks project." error={err("market")} showHint>
+          <Field label="Lokasi / Pasar" error={err("location_market") ?? err("market")}>
             <input
               className="input"
-              name="market"
-              defaultValue=""
+              name="location_market"
+              defaultValue={initial.location ?? ""}
               readOnly={readOnly}
-              placeholder="Ketik nama market…"
+              placeholder="Ketik lokasi atau wilayah pasar…"
               autoComplete="off"
             />
-          </Field>
-
-          <Field label="Location" error={err("location")}>
-            <input className="input" name="location" defaultValue={initial.location ?? ""} readOnly={readOnly} />
           </Field>
 
           <Field label="Volume (L)" error={err("volume")}>
@@ -108,11 +92,11 @@ export function ProjectForm({ mode, initial, readOnly = false }: ProjectFormProp
             />
           </Field>
 
-          <Field label="Period" error={err("period_label")}>
+          <Field label="Periode" error={err("period_label")}>
             <input className="input" name="period_label" defaultValue={initial.period_label ?? ""} readOnly={readOnly} />
           </Field>
 
-          <Field label="PIC" hint="Opsional. Isi nama atau email user yang bertanggung jawab." error={err("pic")} showHint>
+          <Field label="Penanggung jawab" hint="Opsional. Isi nama atau email." error={err("pic")} showHint>
             <input
               className="input"
               name="pic"
@@ -127,36 +111,27 @@ export function ProjectForm({ mode, initial, readOnly = false }: ProjectFormProp
             <select className="input" name="status" defaultValue={initial.status} disabled={readOnly}>
               {PROJECT_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {PROJECT_STATUS_LABELS[s]}
                 </option>
               ))}
             </select>
           </Field>
 
-          <div className="md:col-span-2 xl:col-span-3">
-            <Field label="Notes" error={err("notes")}>
-              <textarea className="input" name="notes" rows={3} defaultValue={initial.notes ?? ""} readOnly={readOnly} />
-            </Field>
-          </div>
-
-          {mode === "edit" ? (
-            <div className="md:col-span-2 xl:col-span-3">
-              <Field label="Reason (audit)" hint="Alasan perubahan ini dicatat pada project history.">
-                <input className="input" name="reason" placeholder="mis. update PIC & period" readOnly={readOnly} />
-              </Field>
-            </div>
-          ) : null}
         </div>
       </Card>
 
+      {mode === "create" ? (
+        <p className="text-xs text-ink-500">Kode proyek dibuat otomatis setelah disimpan.</p>
+      ) : null}
+
       {readOnly ? (
         <p className="text-xs text-ink-500">
-          Role Anda hanya dapat membaca project ini. Perubahan akan ditolak oleh database (RLS).
+          Anda hanya dapat melihat proyek ini.
         </p>
       ) : (
         <div className="flex items-center gap-2">
           <SubmitButton
-            label={mode === "create" ? "Buat project" : "Simpan perubahan"}
+            label={mode === "create" ? "Buat proyek" : "Simpan perubahan"}
             pendingLabel={mode === "create" ? "Membuat…" : "Menyimpan…"}
           />
           <Link

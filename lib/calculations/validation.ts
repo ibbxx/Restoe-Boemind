@@ -79,14 +79,7 @@ export function validateNumeric(
 
 export function validateProjectId(projectId: string | null | undefined): CalcFailure | null {
   if (!projectId || typeof projectId !== "string" || projectId.trim() === "") {
-    return fail("INVALID_SCENARIO", "Project ID tidak valid.", "project_id");
-  }
-  return null;
-}
-
-export function validateScenarioId(scenarioId: string | null | undefined): CalcFailure | null {
-  if (!scenarioId || typeof scenarioId !== "string" || scenarioId.trim() === "") {
-    return fail("INVALID_SCENARIO", "Scenario ID tidak valid.", "scenario_id");
+    return fail("MISSING_INPUT", "Project ID tidak valid.", "project_id");
   }
   return null;
 }

@@ -26,13 +26,13 @@ export function AddVendorForm({ projectId, canWrite }: { projectId: string; canW
   const [pending, startTransition] = useTransition();
 
   if (!canWrite) {
-    return <p className="px-4 py-3 text-xs text-ink-500">Read-only access.</p>;
+    return <p className="px-4 py-3 text-xs text-ink-500">Anda hanya dapat melihat data pemasok.</p>;
   }
 
   const submit = () => {
     const value = name.trim();
     if (value === "") {
-      setError("Vendor name is required.");
+      setError("pemasok name is required.");
       return;
     }
     setError(null);
@@ -47,7 +47,7 @@ export function AddVendorForm({ projectId, canWrite }: { projectId: string; canW
     <div className="flex flex-wrap items-end gap-2 p-3">
       <div>
         <label className="field-label" htmlFor="vendor-name">
-          Vendor baru
+          pemasok baru
         </label>
         <input
           id="vendor-name"
@@ -64,7 +64,7 @@ export function AddVendorForm({ projectId, canWrite }: { projectId: string; canW
         />
       </div>
       <button type="button" className="btn-primary" disabled={pending} onClick={submit}>
-        {pending ? "Adding…" : "Add vendor"}
+        {pending ? "Adding…" : "Add pemasok"}
       </button>
       {error ? <span className="text-2xs text-negative-700">{error}</span> : null}
     </div>
@@ -93,7 +93,7 @@ export function VendorPriceForm({
   if (!canWrite) {
     return (
       <div className="px-3 py-2 text-xs text-ink-500">
-        Read-only access.
+        Anda hanya dapat melihat data pemasok.
       </div>
     );
   }
@@ -106,7 +106,7 @@ export function VendorPriceForm({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span>{price ? "Edit vendor price" : "Add vendor price"}</span>
+        <span>{price ? "Edit pemasok price" : "Add pemasok price"}</span>
         <span aria-hidden="true">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -115,7 +115,7 @@ export function VendorPriceForm({
           <input type="hidden" name="project_id" value={projectId} />
           <input type="hidden" name="vendor_id" value={entry.vendor.id} />
 
-          <FormAlerts state={state} successMessage="Vendor price saved." />
+          <FormAlerts state={state} successMessage="pemasok price saved." />
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-4">
             <Field
@@ -146,7 +146,7 @@ export function VendorPriceForm({
 
             <Field
               label="PPN input"
-              hint="Otomatis mengikuti tarif di atas, atau ketik manual sesuai dokumen vendor."
+              hint="Otomatis mengikuti tarif di atas, atau ketik manual sesuai dokumen pemasok."
             >
               <label className="flex items-center gap-2 py-1.5 text-xs text-ink-700">
                 <input
@@ -209,7 +209,7 @@ export function VendorPriceForm({
             </Field>
             <div className="md:col-span-3 xl:col-span-4">
               <Field label="Alasan perubahan">
-                <input className="input" name="reason" placeholder="mis. revisi harga vendor setelah negosiasi" />
+                <input className="input" name="reason" placeholder="mis. revisi harga pemasok setelah negosiasi" />
               </Field>
             </div>
           </div>
@@ -240,7 +240,7 @@ function previewAllIn(price: VendorPriceRowView | null): number | null {
   return price?.all_in_amount ?? null;
 }
 
-/** Excel "Sumber (vendor)": marks which vendor column feeds the AHS header. */
+/** Identifies the selected supplier for this project. */
 export function SelectVendorButton({
   projectId,
   linkId,
@@ -254,7 +254,7 @@ export function SelectVendorButton({
 }) {
   if (!canWrite) {
     return isSelected ? (
-      <span className="badge bg-positive-100 text-positive-700">sumber AHS</span>
+      <span className="badge bg-positive-100 text-positive-700">pemasok dipilih</span>
     ) : null;
   }
   return (
@@ -282,10 +282,10 @@ export function RemoveVendorButton({
   return (
     <AsyncActionButton
       variant="danger"
-      label="Delete"
+      label="Hapus"
       pendingLabel="Deleting…"
       confirmTitle={`Delete ${vendorName}?`}
-      confirmMessage="The vendor column will be removed from this project. Saved prices remain in history."
+      confirmMessage="The pemasok column will be removed from this proyek."
       action={() => removeVendorFromProjectAction(linkId, projectId)}
     />
   );

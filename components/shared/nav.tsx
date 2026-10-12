@@ -14,7 +14,7 @@ export interface NavTab {
 export function NavTabs({ tabs, exact = false }: { tabs: NavTab[]; exact?: boolean }) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-wrap gap-0.5 border-b border-ink-200" aria-label="Project navigation">
+    <nav className="flex flex-wrap gap-0.5 border-b border-ink-200" aria-label="proyek navigation">
       {tabs.map((tab) => {
         const active = exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
         if (tab.disabled) {

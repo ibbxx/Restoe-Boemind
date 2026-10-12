@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/next-safe.mjs dev",
-    "dev:unsafe": "next dev",
+    "dev:unsafe": "next dev --hostname 127.0.0.1",
     "build": "node scripts/next-safe.mjs build",
     "start": "node scripts/next-safe.mjs start",
     "typecheck": "tsc --noEmit",
@@ -14,11 +14,11 @@
     "test:watch": "vitest",
     "extract:excel": "python3 scripts/extract_excel_cases.py",
     "seed:sql": "node scripts/generate_seed_sql.mjs",
-    "seed:local": "vite-node scripts/seed_local_dummy.ts",
     "crosscheck:report": "vite-node scripts/crosscheck_report.ts",
     "coverage:report": "vite-node scripts/coverage_report.ts",
     "validate:supabase": "bash scripts/validate_supabase.sh"
   },
+  "engines": { "node": ">=22.16.0" },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.1.0",
@@ -36,6 +36,8 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "@univerjs/preset-sheets-core": "^1.0.3",
+    "@univerjs/presets": "^1.0.3",
     "next": "^15.5.27",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

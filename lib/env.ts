@@ -27,8 +27,8 @@ export const isSupabaseConfigured = supabaseEnv !== null;
 export const isLocalDemoMode: boolean = (() => {
   const val = read("LOCAL_DEMO_MODE") ?? read("NEXT_PUBLIC_LOCAL_DEMO_MODE");
   if (val === "false" || val === "0") return false;
-  return val === "true" || val === "1" || !supabaseEnv;
+  return val === "true" || val === "1";
 })();
 
 export const MISSING_ENV_MESSAGE =
-  "Mode local tidak tersedia. Periksa penyimpanan lokal aplikasi atau aktifkan adapter Supabase secara eksplisit.";
+  "Aplikasi belum siap digunakan. Hubungi penanggung jawab aplikasi.";

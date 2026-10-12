@@ -20,9 +20,9 @@ export function otherCost(price: VendorPriceRowView | null): number | null {
 }
 
 export function vendorStatus(entry: ProjectVendorView): { label: string; tone: "positive" | "accent" | "caution" | "neutral" } {
-  if (entry.link.is_selected) return { label: "Selected", tone: "positive" };
-  if (!entry.price || entry.price.base_price === null) return { label: "No price", tone: "caution" };
-  return { label: "Evaluated", tone: "accent" };
+  if (entry.link.is_selected) return { label: "Sumber terpilih", tone: "positive" };
+  if (!entry.price || entry.price.base_price === null) return { label: "Harga belum diisi", tone: "caution" };
+  return { label: "Sudah dinilai", tone: "accent" };
 }
 
 export function TaxCell({ price }: { price: VendorPriceRowView | null }) {
@@ -33,7 +33,7 @@ export function TaxCell({ price }: { price: VendorPriceRowView | null }) {
       {formatCurrency(price.ppn_amount)}
       <span className="ml-1 text-2xs text-ink-500">
         {rate ? `(${rate})` : ""}
-        {price.ppn_is_formula ? "" : " · literal"}
+        {price.ppn_is_formula ? "" : " · diisi langsung"}
       </span>
     </span>
   );
@@ -44,7 +44,6 @@ export function AllInCell({ price }: { price: VendorPriceRowView | null }) {
   return (
     <span className="font-medium">
       {formatCurrency(price.all_in_amount)}
-      <span className="ml-1 text-2xs text-ink-500">{price.all_in_formula_id ?? ""}</span>
     </span>
   );
 }
@@ -54,7 +53,7 @@ export function VendorComparisonTable({ view }: { view: VendorComparisonView }) 
   if (view.vendors.length === 0) {
     return (
       <p className="px-4 py-3 text-xs text-ink-500">
-        No vendors. Add at least one vendor to compare prices.
+        Belum ada pemasok. Tambahkan pemasok untuk membandingkan harga.
       </p>
     );
   }
@@ -64,13 +63,13 @@ export function VendorComparisonTable({ view }: { view: VendorComparisonView }) 
       <table className="table-base">
         <thead>
           <tr>
-            <th scope="col">Metric</th>
+            <th scope="col">Rincian</th>
             {view.vendors.map((vendor) => (
               <th key={vendor.vendor_id} scope="col" className="text-right">
                 <span className="block">{vendor.name}</span>
                 <span className="flex justify-end gap-1 pt-0.5">
-                  {vendor.is_selected ? <Badge tone="positive">selected</Badge> : null}
-                  {vendor.has_price ? null : <Badge tone="caution">no price</Badge>}
+                  {vendor.is_selected ? <Badge tone="positive">Terpilih</Badge> : null}
+                  {vendor.has_price ? null : <Badge tone="caution">Harga belum diisi</Badge>}
                 </span>
               </th>
             ))}
@@ -94,9 +93,6 @@ export function VendorComparisonTable({ view }: { view: VendorComparisonView }) 
                     ) : (
                       <>
                         {formatCurrency(cell.value)}
-                        {cell.formula_id ? (
-                          <span className="ml-1 text-2xs text-ink-500">{cell.formula_id}</span>
-                        ) : null}
                       </>
                     )}
                   </td>
@@ -106,7 +102,7 @@ export function VendorComparisonTable({ view }: { view: VendorComparisonView }) 
           ))}
           <tr>
             <th scope="row" className="text-left text-xs font-medium text-ink-600">
-              Availability
+              Ketersediaan
             </th>
             {view.vendors.map((vendor) => (
               <td key={`avail-${vendor.vendor_id}`} className="text-right text-xs">
@@ -116,7 +112,7 @@ export function VendorComparisonTable({ view }: { view: VendorComparisonView }) 
           </tr>
           <tr>
             <th scope="row" className="text-left text-xs font-medium text-ink-600">
-              Notes
+              Catatan
             </th>
             {view.vendors.map((vendor) => (
               <td key={`note-${vendor.vendor_id}`} className="text-right text-xs">
@@ -129,7 +125,7 @@ export function VendorComparisonTable({ view }: { view: VendorComparisonView }) 
 
       {view.unpriced_indexes.length > 0 ? (
         <p className="border-t border-ink-100 px-3 py-2 text-2xs text-caution-700">
-          {view.unpriced_indexes.length} vendor(s) have no price. Values show “—” and are excluded from ALL IN comparison.
+          {view.unpriced_indexes.length} pemasok belum memiliki harga. Kolomnya ditandai “—” dan belum ikut perbandingan harga akhir.
         </p>
       ) : null}
     </div>

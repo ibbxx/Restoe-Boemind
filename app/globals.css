@@ -33,6 +33,111 @@
     @apply flex items-center justify-between gap-3 border-b border-ink-200 px-3 py-2;
   }
 
+  /* Hallmark · pre-emit critique: P4 H4 E4 S4 R5 V3 */
+  .projects-card {
+    @apply min-w-0 overflow-hidden border-t-2 border-t-rbi-red;
+  }
+
+  .projects-card .card-hd {
+    @apply bg-ink-50 px-4 py-3 sm:px-5;
+  }
+
+  .projects-card .card-title {
+    @apply text-sm tracking-tight;
+  }
+
+  .projects-filter-bar {
+    @apply grid min-w-0 gap-3 border-b border-ink-200 bg-white p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_11rem_auto] md:items-end;
+  }
+
+  .projects-filter-bar .input,
+  .projects-filter-actions .btn-primary,
+  .projects-filter-actions .btn-secondary {
+    @apply min-h-10;
+  }
+
+  .projects-filter-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .projects-filter-actions > * {
+    @apply flex-1 whitespace-nowrap md:flex-none;
+  }
+
+  .projects-create-button,
+  .projects-card a,
+  .projects-card button {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-600;
+  }
+
+  .projects-table {
+    min-width: 960px;
+  }
+
+  .projects-table th {
+    @apply border-b border-ink-200 bg-ink-50 px-5 py-3 text-2xs font-semibold tracking-wide text-ink-600;
+  }
+
+  .projects-table td {
+    @apply border-b border-ink-100 px-5 py-4 align-top leading-relaxed;
+    overflow-wrap: anywhere;
+  }
+
+  .projects-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .projects-table tbody tr:hover {
+    @apply bg-ink-50;
+  }
+
+  .projects-title-link {
+    @apply inline-block font-semibold leading-snug text-rbi-navy underline-offset-2 hover:text-rbi-redDark hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-600;
+    overflow-wrap: anywhere;
+  }
+
+  .projects-meta {
+    @apply text-xs text-ink-500;
+    overflow-wrap: anywhere;
+  }
+
+  .projects-list-item {
+    @apply border-b border-ink-200 px-4 py-4 last:border-b-0 sm:px-5;
+  }
+
+  .projects-list-details {
+    @apply mt-4 grid grid-cols-2 gap-x-4 gap-y-3;
+  }
+
+  .projects-list-details dt {
+    @apply text-2xs font-medium text-ink-500;
+  }
+
+  .projects-list-details dd {
+    @apply mt-0.5 text-sm text-ink-800;
+    overflow-wrap: anywhere;
+  }
+
+  .projects-list-footer {
+    @apply mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 pt-3 text-xs text-ink-500;
+  }
+
+  .projects-pagination > div {
+    @apply px-4 py-3 sm:px-5;
+  }
+
+  @media (max-width: 639px) {
+    .projects-pagination > div > div {
+      @apply w-full justify-between;
+    }
+  }
+
+  @media (max-width: 374px) {
+    .projects-list-details {
+      @apply grid-cols-1;
+    }
+  }
+
   .card-title {
     @apply text-xs font-semibold text-ink-900;
   }
@@ -417,3 +522,173 @@
     .workbook-ahs .sheet-title-alt { font-size: 20px; }
   }
 }
+.univer-workbook-shell {
+  --history-control-border: #cbd5e1;
+  --history-control-border-muted: #e2e8f0;
+  --history-control-paper: #f8fafc;
+  --history-control-paper-hover: #eff6ff;
+  --history-control-paper-disabled: #fff;
+  --history-control-ink: #071b4d;
+  --history-control-ink-hover: #0d2b72;
+  --history-control-ink-disabled: #94a3b8;
+  --history-control-focus: #2563eb;
+  --history-control-accent: #3b82f6;
+  --history-control-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.univer-workbook-host,
+.univer-workbook-canvas {
+  width: 100%;
+  height: min(78vh, 920px);
+  min-height: 680px;
+}
+
+.univer-workbook-host { min-height: 0; flex: 1 1 auto; }
+.univer-workbook-canvas { height: 100%; min-height: 0; }
+
+/* Hallmark · component: workbook history controls · genre: modern-minimal · theme: existing RBI
+ * states: default · hover · focus · active · disabled · synchronous command
+ * contrast: uses existing RBI interface tokens
+ * pre-emit critique: P5 H4 E5 S5 R5 V3
+ */
+.univer-workbook-canvas :is(
+  [data-u-command="univer.command.undo"],
+  [data-u-command="univer.command.redo"]
+) {
+  box-sizing: border-box;
+  border: 1px solid var(--history-control-border);
+  border-radius: 0.375rem;
+  background: var(--history-control-paper);
+  color: var(--history-control-ink);
+  box-shadow: var(--history-control-shadow);
+  transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out, opacity 100ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .univer-workbook-canvas :is(
+    [data-u-command="univer.command.undo"],
+    [data-u-command="univer.command.redo"]
+  ):not(:disabled):hover {
+    border-color: var(--history-control-accent);
+    background: var(--history-control-paper-hover);
+    color: var(--history-control-ink-hover);
+  }
+}
+
+.univer-workbook-canvas :is(
+  [data-u-command="univer.command.undo"],
+  [data-u-command="univer.command.redo"]
+):not(:disabled):active {
+  border-color: var(--history-control-ink-hover);
+  background: #dbeafe;
+}
+
+.univer-workbook-canvas :is(
+  [data-u-command="univer.command.undo"],
+  [data-u-command="univer.command.redo"]
+):focus-visible {
+  outline: 2px solid var(--history-control-focus);
+  outline-offset: 2px;
+}
+
+.univer-workbook-canvas :is(
+  [data-u-command="univer.command.undo"],
+  [data-u-command="univer.command.redo"]
+):disabled {
+  border-color: var(--history-control-border-muted);
+  background: var(--history-control-paper-disabled);
+  color: var(--history-control-ink-disabled);
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .univer-workbook-canvas :is(
+    [data-u-command="univer.command.undo"],
+    [data-u-command="univer.command.redo"]
+  ) {
+    transition: none;
+  }
+}
+
+.univer-save-bar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.univer-save-state {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.univer-save-state.is-error { color: #b91c1c; }
+.univer-save-state.is-conflict { color: #9a3412; }
+.univer-save-message { overflow-wrap: anywhere; }
+.univer-save-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.univer-save-actions .btn-secondary { margin: 0; }
+.univer-save-actions .btn-secondary:focus-visible {
+  outline: 2px solid var(--history-control-focus);
+  outline-offset: 2px;
+}
+.univer-workbook-loading { min-height: 680px; display: grid; place-items: center; color: #64748b; }
+
+.sidebar-shell { transition: width 180ms ease; }
+.sidebar-navigation { scrollbar-gutter: stable; overscroll-behavior: contain; }
+.sidebar-brand-content { overflow: hidden; }
+.sidebar-is-minimized .sidebar-brand { justify-content: center; padding-inline: 0.5rem; }
+.sidebar-is-minimized .sidebar-brand-content > a { justify-content: center; }
+.sidebar-is-minimized .sidebar-brand-content > a > span:last-child { display: none; }
+.sidebar-is-minimized .sidebar-section-label,
+.sidebar-is-minimized .sidebar-nav-label,
+.sidebar-is-minimized .sidebar-nav-hint,
+.sidebar-is-minimized .sidebar-toggle-label { display: none; }
+.sidebar-is-minimized .sidebar-nav-link { justify-content: center; padding-inline: 0.25rem; }
+.sidebar-is-minimized .sidebar-nav-content { justify-content: center; }
+.sidebar-is-minimized .sidebar-navigation { padding-inline: 0.25rem; }
+.sidebar-nav-icon, .sidebar-nav-initial {
+  display: inline-flex;
+  height: 1.7rem;
+  width: 1.7rem;
+  flex: 0 0 1.7rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  background: rgb(255 255 255 / 0.1);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.sidebar-toggle {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  color: #bfdbfe;
+  font-size: 0.75rem;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.sidebar-toggle:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.sidebar-toggle:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+

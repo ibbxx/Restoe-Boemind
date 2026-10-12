@@ -23,6 +23,7 @@ import {
   unmergeWorkbookCells,
   setWorkbookGridCell,
   resetWorkbookGridCellOverride,
+  saveUniverWorkbook,
 } from "../services/sheets";
 import type { SheetRange, SheetFill, WorkbookGridRange, WorkbookGridCellRecord } from "../types/sheets";
 import { actionContext, isContextError } from "./context";
@@ -37,7 +38,7 @@ import type { Actor } from "../auth/session";
  */
 
 function revalidate(projectId: string): void {
-  revalidateProject(projectId, { ahs: true });
+  revalidateProject(projectId);
 }
 
 async function workbookMutation(projectId: string, mutation: (db: Database, actor: Actor) => Promise<unknown>) {
@@ -82,6 +83,25 @@ export async function setWorkbookGridCellAction(projectId: string, input: { rowI
 
 export async function resetWorkbookGridCellOverrideAction(projectId: string, input: { rowId: string; columnId: string }) {
   return workbookMutation(projectId, (db, actor) => resetWorkbookGridCellOverride(db, actor, projectId, input));
+}
+
+export async function saveUniverWorkbookAction(projectId: string, snapshotJson: string, options: { baseRevision?: number; mutationId?: string } = {}) {
+  const ctx = await actionContext();
+  if (isContextError(ctx)) return ctx;
+  if (typeof snapshotJson !== "string" || snapshotJson.length === 0 || Buffer.byteLength(snapshotJson, "utf8") > 5_000_000) {
+    return { ok: false, error: "Snapshot workbook tidak valid atau terlalu besar.", errorCode: "INVALID_INPUT" } as const;
+  }
+  try {
+    const snapshot = JSON.parse(snapshotJson) as unknown;
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      return { ok: false, error: "Snapshot workbook tidak valid.", errorCode: "INVALID_INPUT" } as const;
+    }
+    // Autosave must not revalidate the project route: Univer already owns the
+    // current editor state and a revalidation would remount it after each edit.
+    return saveUniverWorkbook(ctx.db, ctx.actor, projectId, snapshot as Record<string, unknown>, options);
+  } catch {
+    return { ok: false, error: "Snapshot workbook bukan JSON yang valid.", errorCode: "INVALID_INPUT" } as const;
+  }
 }
 
 export async function mergeSheetCellsAction(projectId: string, input: { sheet_key: string; range: SheetRange }) {

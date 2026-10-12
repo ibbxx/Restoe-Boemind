@@ -1,0 +1,17 @@
+{
+  "id": "project-blank",
+  "name": "Lembar kerja proyek",
+  "appVersion": "1.0.0",
+  "locale": "enUS",
+  "sheetOrder": ["workspace"],
+  "sheets": {
+    "workspace": {
+      "id": "workspace",
+      "name": "Lembar kerja",
+      "rowCount": 200,
+      "columnCount": 50,
+      "cellData": {},
+      "columnData": {}
+    }
+  }
+}
